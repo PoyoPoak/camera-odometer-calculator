@@ -1,0 +1,5 @@
+# Runtime (the engine itself needs only the standard library)
+PySide6-Essentials==6.12.0
+
+# Build, Windows only
+pyinstaller==6.22.3
