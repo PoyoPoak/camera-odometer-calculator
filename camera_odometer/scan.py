@@ -124,10 +124,12 @@ def _scandir(folder: str) -> tuple[list[str], list[str]]:
         for e in entries:
             if e.name.startswith("."):
                 continue
-            # FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM; DirEntry.stat costs nothing on Windows
-            if os.name == "nt" and e.stat(follow_symlinks=False).st_file_attributes & 6:
+            is_dir = e.is_dir(follow_symlinks=False)
+            # Windows: skip hidden (2) entries and system (4) files. A folder with a custom icon
+            # carries the system bit, so folders are only skipped when hidden. DirEntry.stat is free there.
+            if os.name == "nt" and e.stat(follow_symlinks=False).st_file_attributes & (2 if is_dir else 6):
                 continue
-            if e.is_dir(follow_symlinks=False):
+            if is_dir:
                 dirs.append(e.name)
             elif os.path.splitext(e.name)[1].lower() in IMAGE_EXTS:
                 files.append(e.name)
@@ -224,9 +226,30 @@ def _bisect(files, lo: int, hi: int, a: Shot, b: Shot, after, reader: _Reader):
     return lo, a, hi, b
 
 
+def _unwrap(files: list[str], a: Shot, b: Shot, reader: _Reader) -> tuple[list[str], Shot, Shot]:
+    """The file numbers rolled over (9999 -> 0001), so the newest files sort first.
+
+    Find the seam and return the group rotated back into shooting order, with its true ends.
+    """
+    lo, hi = 0, len(files) - 1  # files[lo] is in the newer part, files[hi] in the older part
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        (s,) = reader.read([files[mid]])
+        newer, older = _ordered(a, s), _ordered(s, b)
+        if newer == older:
+            raise _Mixed
+        if newer:
+            lo, a = mid, s
+        else:
+            hi, b = mid, s
+    return files[hi:] + files[:hi], b, a
+
+
 def _resolve(files: list[str], a: Shot, b: Shot, year: int, reader: _Reader) -> list[tuple[Shot, Shot, int]]:
     """The in-year runs (first, last, frames) of one group, given its probed ends a and b."""
     try:
+        if _ordered(b, a) and not _ordered(a, b):
+            files, a, b = _unwrap(files, a, b, reader)
         if not _ordered(a, b):
             raise _Mixed
         if b.taken.year < year or a.taken.year > year:

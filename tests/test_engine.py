@@ -162,6 +162,16 @@ class ScanTest(unittest.TestCase):
         self.assertEqual((r.first.shutter_count, r.last.shutter_count), (51, 64))
         self.assertEqual(scan.scan(self.root, 2029, self.et).folders, [])
 
+    def test_wrapped_file_numbers_are_rotated_without_a_full_read(self):
+        # The camera rolled over from IMG9999 to IMG0001, so the newest files sort first.
+        numbers = [*range(9990, 10000), *range(1, 31)]
+        for i, n in enumerate(numbers):
+            self.add(f"IMG{n:04d}.arw", 100 + i, datetime(2031, 6, 1) + timedelta(minutes=i))
+        result = scan.scan(self.root, 2031, self.et)
+        (r,) = result.folders[0].ranges
+        self.assertEqual((r.first.shutter_count, r.last.shutter_count, r.frames), (100, 139, 40))
+        self.assertLess(self.et.files_read, 10)  # 2 ends + at most 6 probes for the seam
+
     def test_two_bodies_in_one_group_are_split_by_full_read(self):
         for n in range(1, 11):
             self.add(f"wed/IMG{n:04d}.arw", 499 + n)
