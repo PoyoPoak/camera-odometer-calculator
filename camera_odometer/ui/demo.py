@@ -10,7 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QBuffer, QByteArray, QEvent, QIODevice, QPointF, Qt, QTimer
-from PySide6.QtGui import QColor, QImage, QKeyEvent, QLinearGradient, QPainter, QRadialGradient
+from PySide6.QtGui import (QColor, QImage, QKeyEvent, QLinearGradient, QPainter, QRadialGradient,
+                           QTransform)
 from PySide6.QtWidgets import QApplication, QPushButton
 
 from ..models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Session, Shot
@@ -100,7 +101,7 @@ def fake_scan(root, year, engine, store, progress, cancelled):
 def list_images(folder: str) -> list[str]:
     posix = folder.replace("\\", "/")
     count = sum(sum(r[3] for r in ranges) for name, ranges in _FOLDERS if posix.endswith("/" + name))
-    return [f"{folder}/DSC{n:05d}.ARW" for n in range(1, min(count, 400) + 1)]
+    return [f"{folder}/DSC{n:05d}.ARW" for n in range(1, count + 1)]
 
 
 def _jpeg(img: QImage) -> bytes:
@@ -111,8 +112,14 @@ def _jpeg(img: QImage) -> bytes:
     return bytes(data)
 
 
-def _painted(path: str, w: int, h: int) -> bytes:
-    """A gradient "photograph", stable per path, hue shared by the folder."""
+def _portrait(path: str) -> bool:
+    return random.Random(path + "/orientation").random() < 0.15
+
+
+def _painted(path: str, w: int, h: int) -> tuple[bytes, int]:
+    """A gradient "photograph" and its rotation, stable per path, hue shared by the folder."""
+    if _portrait(path):  # stored sideways like a camera would, with rotation 90 to stand it up
+        w, h = h, w
     rnd = random.Random(path)
     hue = (random.Random(os.path.dirname(path)).random() + rnd.uniform(-0.05, 0.05)) % 1
     img = QImage(w, h, QImage.Format_RGB32)
@@ -137,7 +144,9 @@ def _painted(path: str, w: int, h: int) -> bytes:
     horizon = h * rnd.uniform(0.6, 0.78)
     p.fillRect(0, int(horizon), w, h, ground)
     p.end()
-    return _jpeg(img)
+    if _portrait(path):
+        return _jpeg(img.transformed(QTransform().rotate(-90))), 90
+    return _jpeg(img), 0
 
 
 class DemoExifTool:
@@ -151,11 +160,10 @@ class DemoExifTool:
         return out
 
     def thumbnails(self, paths):
-        return {p: (_painted(p, 320, 213), 90 if random.Random(p).random() < 0.15 else 0)
-                for p in paths}
+        return {p: _painted(p, 320, 213) for p in paths}
 
     def preview(self, path):
-        return _painted(path, 1620, 1080), 90 if random.Random(path).random() < 0.15 else 0
+        return _painted(path, 1620, 1080)
 
     def close(self):
         pass
@@ -167,7 +175,7 @@ def make_window():
     from .workers import Engine
 
     store = Store(Path(tempfile.mkdtemp(prefix="camera-odometer-demo-")))
-    store.save_settings({"last_root": ROOT, "last_year": YEAR})
+    store.save_settings({"last_root": ROOT.replace("/", "\\"), "last_year": YEAR})
     done = Session(demo_scan("D:/Photos/Archive", YEAR - 1))
     done.labels = {"": BUSINESS, "01-18 Winter Lakeshore": PERSONAL, "04-05 Spring Trail Hike": PERSONAL,
                    "07-19 Coastal Road Trip": PERSONAL, "10-31 Costume Party": PERSONAL}
@@ -244,16 +252,20 @@ def _selftest(win) -> int:
     check(page.current == parent, "landed on the folder with sub-folders")
 
     check(page.items[parent].isExpanded(), "sub-folders start expanded")
-    _key(tree, Qt.Key_Right)
-    check(page.items[parent].isExpanded(), "Right does not collapse or expand the tree")
     _key(tree, Qt.Key_Left)
-    check(page.items[parent].isExpanded() and page.current == parent or labels.get(parent) == BUSINESS,
-          "Left does not collapse the tree")
+    check(labels.get(parent) == PERSONAL and page.items[parent].isExpanded(),
+          "Left labels a folder with sub-folders instead of collapsing it")
     _settle(win)
-    labels.pop("05-17 Aerial Vineyard", None)  # the stray Left above landed here
-    page._refresh()
-    check(labels.get(parent) == BUSINESS and child not in labels
-          and effective_label(child, labels) == BUSINESS, "sub-folders inherit the parent's label")
+    page.items[parent].setExpanded(False)
+    page._select(parent)
+    _key(tree, Qt.Key_Right)
+    check(labels.get(parent) == BUSINESS and not page.items[parent].isExpanded(),
+          "Right labels a collapsed folder instead of expanding it")
+    check(child not in labels and effective_label(child, labels) == BUSINESS,
+          "sub-folders inherit the parent's label")
+    _settle(win)
+    check(page.current == "05-17 Aerial Vineyard", "the jump skips folders that inherited a label")
+    page.items[parent].setExpanded(True)
 
     page._select(parent)
     _key(tree, Qt.Key_Space)
@@ -448,18 +460,19 @@ def run_headless(app, shots_dir: str | None, selftest: bool) -> int:
     watchdog.daemon = True
     watchdog.start()
 
-    win = make_window()
-    win.show()
-    try:
-        if selftest:
-            print(f"selftest: {_selftest(win)} checks passed")
-        if shots_dir:
-            print(f"screenshots: {_screenshots(win, Path(shots_dir))} PNGs in {shots_dir}")
-        _settle(win)
-    except Exception as exc:  # noqa: BLE001
-        traceback.print_exc()
-        failures.append(exc)
-    win.close()
+    runs = [(_selftest, "selftest: {} checks passed")] * selftest
+    if shots_dir:
+        runs.append((lambda w: _screenshots(w, Path(shots_dir)), f"screenshots: {{}} PNGs in {shots_dir}"))
+    for run, message in runs:  # each on a fresh window and data folder
+        win = make_window()
+        win.show()
+        try:
+            print(message.format(run(win)))
+            _settle(win)
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            failures.append(exc)
+        win.close()
     watchdog.cancel()
     if failures:
         print(f"FAILED: {len(failures)} error(s)")

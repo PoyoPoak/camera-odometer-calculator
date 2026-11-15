@@ -150,6 +150,7 @@ class GalleryPage(QWidget):
         self.grid.setSelectionMode(QListView.SingleSelection)
         self.grid.setVerticalScrollMode(QListView.ScrollPerPixel)
         self.grid.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.grid.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)  # keeps the column maths stable
         self.grid.setGridSize(QSize(CELL_W, CELL_W * 2 // 3 + CAPTION_H))
         self.grid.setModel(self.model)
         self.grid.setItemDelegate(CellDelegate(self))

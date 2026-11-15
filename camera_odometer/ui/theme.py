@@ -77,6 +77,10 @@ QPushButton[kind="business"]:hover {{ background: rgba(242, 168, 58, 0.20); }}
 QLineEdit, QSpinBox {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 6px;
     padding: 8px 10px; selection-background-color: #35527c; }}
 QLineEdit:focus, QSpinBox:focus {{ border-color: #5c5c64; }}
+/* The stock arrows cannot be themed without image files: hidden, the page adds - / + buttons. */
+QSpinBox {{ padding: 8px 4px; }}
+QSpinBox::up-button, QSpinBox::down-button {{ width: 0; height: 0; border: none; }}
+QPushButton[kind="stepper"] {{ font-size: 18px; padding: 4px 0 7px 0; }}
 
 QFrame[role="card"] {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; }}
 QFrame[role="card"][flash="personal"] {{ border-color: {PERSONAL_BLUE}; background: #1b2434; }}
@@ -94,6 +98,7 @@ QProgressBar {{ background: {RAISED}; border: none; border-radius: 3px; max-heig
 QProgressBar::chunk {{ background: {TEXT}; border-radius: 3px; }}
 
 QScrollArea, QAbstractScrollArea {{ background: transparent; border: none; }}
+QScrollArea > QWidget > QWidget {{ background: transparent; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: #3a3a41; border-radius: 3px; min-height: 32px; }}
 QScrollBar::handle:vertical:hover {{ background: #4b4b53; }}
@@ -168,7 +173,7 @@ def camera_name(make: str, model: str) -> str:
     brand = make.split()[0] if make.split() else ""
     if not brand or model.lower().startswith(brand.lower()):
         return model or make or "Unknown camera"
-    return f"{brand.capitalize() if brand.isupper() else brand} {model}"
+    return f"{brand.capitalize() if brand.isupper() and len(brand) > 3 else brand} {model}"
 
 
 # ---- widgets --------------------------------------------------------------

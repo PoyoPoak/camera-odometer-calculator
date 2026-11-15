@@ -104,6 +104,8 @@ class ResultsPage(QWidget):
         header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         header.setHighlightSections(False)
         header.setSortIndicatorShown(True)
+        for c in (2, 3):
+            self.table.horizontalHeaderItem(c).setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.table.horizontalHeaderItem(2).setToolTip("Shutter counts the folder spans, before overlaps are resolved")
         self.table.horizontalHeaderItem(3).setToolTip("Actuations credited to the folder after overlaps are resolved")
         self.table.verticalHeader().hide()
