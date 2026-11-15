@@ -6,11 +6,12 @@ import os
 import sys
 import threading
 import time
+import traceback
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow, QPushButton, QStackedWidget,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow, QMessageBox, QPushButton,
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import calc
 from ..models import Session
@@ -284,10 +285,21 @@ def main(argv: list[str] | None = None) -> int:
     if headless:
         from . import demo
         return demo.run_headless(app, args.screenshots, args.selftest)
-    if args.demo:
-        from . import demo
-        window = demo.make_window()
-    else:
-        window = MainWindow(Store(), Engine())
+    try:
+        if args.demo:
+            from . import demo
+            window = demo.make_window()
+        else:
+            window = MainWindow(Store(), Engine())
+    except OSError as exc:
+        QMessageBox.critical(None, "Camera Odometer", "The app could not create its data folder next to "
+                             f"the program ({exc.strerror or exc}). Move the app to a folder you can write to.")
+        return 1
+
+    def unexpected(kind, value, tb):  # a bug must be visible, but never as a traceback dialog
+        traceback.print_exception(kind, value, tb)
+        window.set_status(f"Something went wrong: {value}")
+
+    sys.excepthook = unexpected
     window.show()
     return app.exec()

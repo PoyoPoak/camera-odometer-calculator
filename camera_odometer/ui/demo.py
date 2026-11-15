@@ -3,19 +3,20 @@ from __future__ import annotations
 
 import os
 import random
+import shutil
 import sys
 import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QBuffer, QByteArray, QEvent, QIODevice, QPointF, Qt, QTimer
+from PySide6.QtCore import QBuffer, QByteArray, QEvent, QIODevice, QPointF, Qt
 from PySide6.QtGui import (QColor, QImage, QKeyEvent, QLinearGradient, QPainter, QRadialGradient,
                            QTransform)
 from PySide6.QtWidgets import QApplication, QPushButton
 
 from ..models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Session, Shot
-from ..store import Store
+from ..store import Store, app_dir
 
 YEAR = datetime.now().year - 1
 ROOT = "D:/Photos/Library"
@@ -169,12 +170,12 @@ class DemoExifTool:
         pass
 
 
-def make_window():
+def make_window(data: Path | None = None):
     """A MainWindow wired to the invented library and a throwaway data folder."""
     from .app import MainWindow
     from .workers import Engine
 
-    store = Store(Path(tempfile.mkdtemp(prefix="camera-odometer-demo-")))
+    store = Store(data or Path(tempfile.mkdtemp(prefix="camera-odometer-demo-")))
     store.save_settings({"last_root": ROOT.replace("/", "\\"), "last_year": YEAR})
     done = Session(demo_scan("D:/Photos/Archive", YEAR - 1))
     done.labels = {"": BUSINESS, "01-18 Winter Lakeshore": PERSONAL, "04-05 Spring Trail Hike": PERSONAL,
@@ -392,6 +393,8 @@ def _screenshots(win, out: Path) -> int:
     labels = win.session.labels
     win.go("classify")
     grab("06-classify")
+    classify._select("Clients/06-21 Garden Wedding")
+    grab("06b-classify-two-cameras")
     classify._select("04-26 Riverside Marathon/Course")
     grab("07-classify-inherited")
     classify._select("Clients")
@@ -463,8 +466,10 @@ def run_headless(app, shots_dir: str | None, selftest: bool) -> int:
     runs = [(_selftest, "selftest: {} checks passed")] * selftest
     if shots_dir:
         runs.append((lambda w: _screenshots(w, Path(shots_dir)), f"screenshots: {{}} PNGs in {shots_dir}"))
+    data = app_dir() / "build" / "demo-data"  # dev runs keep their scratch files inside the repo
     for run, message in runs:  # each on a fresh window and data folder
-        win = make_window()
+        shutil.rmtree(data, ignore_errors=True)
+        win = make_window(data)
         win.show()
         try:
             print(message.format(run(win)))
@@ -473,6 +478,7 @@ def run_headless(app, shots_dir: str | None, selftest: bool) -> int:
             traceback.print_exc()
             failures.append(exc)
         win.close()
+    shutil.rmtree(data, ignore_errors=True)
     watchdog.cancel()
     if failures:
         print(f"FAILED: {len(failures)} error(s)")

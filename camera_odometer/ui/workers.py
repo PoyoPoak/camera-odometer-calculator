@@ -63,7 +63,7 @@ class Engine(QObject):
         self._et_lock = threading.Lock()
         self._closed = False
         self.pending = 0  # jobs submitted whose callback has not run yet (UI thread only)
-        # ponytail: LRU capped by count (~100 MB worst case), switch to a byte budget if needed
+        # ponytail: oldest-first cache capped at 600 thumbs (~100 MB worst case), use a byte budget if needed
         self._thumbs: OrderedDict[str, QImage | None] = OrderedDict()
 
     # -- generic jobs --

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QHea
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from .. import calc
-from ..models import BUSINESS, PERSONAL
 from . import theme
 from .theme import LABEL_COLOR, LABEL_TEXT, button, label, num
 
