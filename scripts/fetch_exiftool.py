@@ -61,7 +61,8 @@ def ensure(name: str, vendor: Path = VENDOR) -> Path:
         (top,) = Path(tmp).iterdir()  # both archives hold exactly one top-level folder
         if name == "win":
             (top / "exiftool(-k).exe").rename(top / "exiftool.exe")  # "(-k)" means "pause before exit"
-        shutil.rmtree(target, ignore_errors=True)
+        if target.exists():
+            shutil.rmtree(target)  # an older version
         top.rename(target)
     print(f"unpacked {target}")
     return target

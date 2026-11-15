@@ -31,25 +31,32 @@ def draw(size: int) -> QImage:
     p.setBrush(DARK)
     p.drawRoundedRect(QRectF(0, 0, 1, 1), 0.2, 0.2)
 
-    small = size < 48          # below 48 px: aperture only, heavier strokes
+    small = size < 48          # below 48 px: aperture only
     cx, cy, radius = (0.5, 0.5, 0.34) if small else (0.5, 0.4, 0.27)
-    stroke = (0.125 if size < 32 else 0.1) if small else 0.06
-    pen = QPen(AMBER, stroke)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    p.setPen(pen)
-    p.setBrush(Qt.BrushStyle.NoBrush)
-    p.drawEllipse(QPointF(cx, cy), radius, radius)
-
-    # six blade edges: each runs along one side of the inner hexagon and on out to the ring
-    inner = radius * (0.56 if size < 32 else 0.5)
+    inner = radius * 0.5       # the hexagonal opening
     corner = lambda k: QPointF(cx + inner * math.cos(math.radians(60 * k - 15)),
                                cy + inner * math.sin(math.radians(60 * k - 15)))
-    pen.setWidthF(stroke * (0.5 if size < 32 else 0.7))
-    p.setPen(pen)
-    for k in range(6):
-        a, b = corner(k), corner(k + 1)
-        reach = (math.sqrt(radius ** 2 - (inner * math.sqrt(3) / 2) ** 2) - inner / 2) / inner
-        p.drawLine(a, b + (b - a) * reach)
+    # each blade edge runs along one side of the hexagon and on out to the rim
+    reach = (math.sqrt(radius ** 2 - (inner * math.sqrt(3) / 2) ** 2) - inner / 2) / inner
+    edges = [(corner(k), corner(k + 1) + (corner(k + 1) - corner(k)) * reach) for k in range(6)]
+
+    if size < 32:              # too few pixels for strokes: a solid disc with the opening cut out
+        radius, inner = 0.4, 0.23
+        p.setBrush(AMBER)
+        p.drawEllipse(QPointF(cx, cy), radius, radius)
+        p.setBrush(DARK)
+        p.drawPolygon([corner(k) for k in range(6)])
+    else:
+        stroke = 0.1 if small else 0.06
+        pen = QPen(AMBER, stroke)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(QPointF(cx, cy), radius, radius)
+        pen.setWidthF(stroke * 0.7)
+        p.setPen(pen)
+        for a, b in edges:
+            p.drawLine(a, b)
 
     if not small:              # odometer: three digit wheels
         p.setPen(Qt.PenStyle.NoPen)
