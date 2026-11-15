@@ -1,0 +1,307 @@
+"""Smart scan: each folder's shutter-count ranges from a few probed files.
+
+See docs/architecture.md for the algorithm.
+"""
+from __future__ import annotations
+
+import os
+import re
+from collections import defaultdict
+from collections.abc import Callable, Iterator
+from datetime import datetime
+
+from .models import Camera, CameraRange, Folder, ScanResult, Shot
+
+RAW_EXTS = frozenset(".arw .cr2 .cr3 .nef .nrw .raf .orf .rw2 .pef .dng .srw .x3f .3fr .iiq "
+                     ".rwl .erf .sr2 .srf".split())
+IMAGE_EXTS = RAW_EXTS | {".jpg", ".jpeg", ".heic"}
+
+_CHUNK = 50  # files per exiftool call, so progress can advance
+
+
+class ScanCancelled(Exception):
+    pass
+
+
+class _Mixed(Exception):
+    """A group is not one body's ordered run; all of it must be read."""
+
+
+def list_images(folder: str) -> list[str]:
+    folder = os.path.abspath(folder)
+    return [os.path.join(folder, name) for name in _scandir(folder)[0]]
+
+
+def scan(root: str, year: int, et, *,
+         cache: dict | None = None,
+         progress: Callable[[int, int, str], None] | None = None,
+         cancelled: Callable[[], bool] | None = None) -> ScanResult:
+    root = os.path.abspath(root)
+    warnings: list[str] = []
+    reader = _Reader(et, {} if cache is None else cache, progress, cancelled)
+    reader.report("Listing folders")
+
+    # 1-2. Walk, and group each folder's images by (prefix, extension).
+    paths: dict[str, str] = {}
+    groups: list[tuple[str, str, list[str]]] = []  # (folder rel, prefix, files in natural order)
+    for rel, path, names in _walk(root, warnings):
+        reader.check_cancelled()
+        paths[rel] = path
+        by_key: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for name in names:
+            stem, ext = os.path.splitext(name)
+            by_key[re.match(r"\D*", stem).group(), ext.lower()].append(os.path.join(path, name))
+        groups += [(rel, prefix, files) for (prefix, _), files in by_key.items()]
+
+    # 3. Probe both ends of every group, batched.
+    ends = list(dict.fromkeys(p for _, _, files in groups for p in (files[0], files[-1])))
+    probe = dict(zip(ends, reader.read(ends)))
+
+    # 4. Resolve each group into runs of (first, last, frames) per body. Groups with counts go
+    # first, so that count-less copies of a counted model are dropped without reading more.
+    runs: dict[tuple[str, str], list[tuple[str, Shot, Shot, int]]] = defaultdict(list)
+
+    def no_counts(group) -> bool:
+        return probe[group[2][0]].shutter_count is None and probe[group[2][-1]].shutter_count is None
+
+    for group in sorted(groups, key=no_counts):
+        rel, prefix, files = group
+        a, b = probe[files[0]], probe[files[-1]]
+        if no_counts(group) and {a.model, b.model} <= reader.counted_models | {""}:
+            continue  # derivatives, or not camera files at all
+        for first, last, frames in _resolve(files, a, b, year, reader):
+            runs[rel, first.camera_id].append((prefix, first, last, frames))
+
+    # 5. One CameraRange per (folder, body), one Camera per body.
+    folders: dict[str, Folder] = {}
+    by_body: dict[str, list[CameraRange]] = defaultdict(list)
+    for (rel, camera_id), found in sorted(runs.items()):
+        counted = [r for r in found if r[1].shutter_count is not None]
+        if not counted and found[0][1].model in reader.counted_models:
+            continue  # derivative
+        key = _count if counted else _taken
+        per_prefix: dict[str, int] = defaultdict(int)  # raw + JPEG pairs share a prefix: count once
+        for prefix, _, _, frames in counted or found:
+            per_prefix[prefix] = max(per_prefix[prefix], frames)
+        rng = CameraRange(camera_id,
+                          min((r[1] for r in counted or found), key=key),
+                          max((r[2] for r in counted or found), key=key),
+                          sum(per_prefix.values()), estimated=not counted)
+        folders.setdefault(rel, Folder(rel, paths[rel])).ranges.append(rng)
+        by_body[camera_id].append(rng)
+        if counted and rng.actuations < 0.9 * rng.frames:
+            warnings.append(f"{rel or 'Top folder'}: the {rng.first.model} counter moved {rng.actuations} "
+                            f"but the folder holds {rng.frames} files (electronic shutter?).")
+
+    cameras = []
+    for camera_id, ranges in sorted(by_body.items()):
+        key = _taken if ranges[0].estimated else _count
+        first = min((r.first for r in ranges), key=key)
+        last = max((r.last for r in ranges), key=key)
+        cameras.append(Camera(camera_id, first.make, first.model, first.serial, first, last,
+                              sum(r.frames for r in ranges), ranges[0].estimated))
+    reader.report("Done")
+    return ScanResult(root, year, cameras, [folders[rel] for rel in sorted(folders)], warnings)
+
+
+def _count(shot: Shot) -> int:
+    return shot.shutter_count
+
+
+def _taken(shot: Shot) -> datetime:
+    return shot.taken
+
+
+def _natural(name: str) -> list:
+    # re.split with a group alternates text, digits, text, ...
+    return [int(t) if i % 2 else t.lower() for i, t in enumerate(re.split(r"(\d+)", name))]
+
+
+def _scandir(folder: str) -> tuple[list[str], list[str]]:
+    """(image file names in natural order, sub-folder names), hidden and system entries skipped."""
+    files, dirs = [], []
+    with os.scandir(folder) as entries:
+        for e in entries:
+            if e.name.startswith("."):
+                continue
+            # FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM; DirEntry.stat costs nothing on Windows
+            if os.name == "nt" and e.stat(follow_symlinks=False).st_file_attributes & 6:
+                continue
+            if e.is_dir(follow_symlinks=False):
+                dirs.append(e.name)
+            elif os.path.splitext(e.name)[1].lower() in IMAGE_EXTS:
+                files.append(e.name)
+    return sorted(files, key=_natural), sorted(dirs, key=_natural)
+
+
+def _walk(root: str, warnings: list[str]) -> Iterator[tuple[str, str, list[str]]]:
+    """(rel, path, image names) for every folder that holds images. No file is opened."""
+    stack = [("", root)]
+    while stack:
+        rel, path = stack.pop()
+        try:
+            files, dirs = _scandir(path)
+        except OSError as exc:
+            if not rel:
+                raise  # the root itself is unreadable: the caller's problem
+            warnings.append(f"{rel}: could not be read ({exc.strerror or exc}).")
+            continue
+        if files:
+            yield rel, path, files
+        stack += [(f"{rel}/{d}" if rel else d, os.path.join(path, d)) for d in reversed(dirs)]
+
+
+class _Reader:
+    """exiftool reads through the cache, with progress and cancellation."""
+
+    def __init__(self, et, cache: dict, progress, cancelled):
+        self.et, self.cache, self.progress, self.cancelled = et, cache, progress, cancelled
+        self.done = self.total = 0
+        self.counted_models: set[str] = set()  # models seen with a shutter count in this scan
+
+    def report(self, message: str) -> None:
+        if self.progress:
+            self.progress(self.done, self.total, message)
+
+    def check_cancelled(self) -> None:
+        if self.cancelled and self.cancelled():
+            raise ScanCancelled
+
+    def read(self, paths: list[str]) -> list[Shot]:
+        keys = {p: _cache_key(p) for p in paths}
+        shots = {p: _load(p, self.cache[k]) for p, k in keys.items() if k in self.cache}
+        todo = [p for p in paths if p not in shots]
+        self.total += len(paths)
+        self.done += len(paths) - len(todo)
+        for i in range(0, len(todo), _CHUNK):
+            self.check_cancelled()
+            chunk = todo[i:i + _CHUNK]
+            self.report(os.path.basename(os.path.dirname(chunk[0])))
+            for s in self.et.read(chunk):
+                shots[s.path] = s
+                if keys[s.path] and (s.model or s.taken):  # never cache a failed read
+                    self.cache[keys[s.path]] = _dump(s)
+            self.done += len(chunk)
+        self.counted_models.update(s.model for s in shots.values() if s.shutter_count is not None)
+        return [shots[p] for p in paths]
+
+
+def _cache_key(path: str) -> str:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return ""
+    return f"{path}|{st.st_size}|{st.st_mtime_ns}"
+
+
+def _dump(s: Shot) -> list:
+    return [s.make, s.model, s.serial, s.taken.isoformat() if s.taken else None, s.shutter_count]
+
+
+def _load(path: str, v: list) -> Shot:
+    return Shot(path, v[0], v[1], v[2], datetime.fromisoformat(v[3]) if v[3] else None, v[4])
+
+
+def _ordered(a: Shot, b: Shot) -> bool:
+    """Could a and b be an earlier and a later frame of one body's run?"""
+    return bool(a.model and a.camera_id == b.camera_id
+                and a.taken and b.taken and a.taken <= b.taken
+                and (a.shutter_count is None) == (b.shutter_count is None)
+                and (a.shutter_count is None or a.shutter_count <= b.shutter_count))
+
+
+def _bisect(files, lo: int, hi: int, a: Shot, b: Shot, after, reader: _Reader):
+    """Narrow lo..hi (shots a..b) to the adjacent pair where `after` turns true."""
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        (s,) = reader.read([files[mid]])
+        if not (_ordered(a, s) and _ordered(s, b)):
+            raise _Mixed
+        if after(s):
+            hi, b = mid, s
+        else:
+            lo, a = mid, s
+    return lo, a, hi, b
+
+
+def _resolve(files: list[str], a: Shot, b: Shot, year: int, reader: _Reader) -> list[tuple[Shot, Shot, int]]:
+    """The in-year runs (first, last, frames) of one group, given its probed ends a and b."""
+    try:
+        if not _ordered(a, b):
+            raise _Mixed
+        if b.taken.year < year or a.taken.year > year:
+            return []
+        i, j = 0, len(files) - 1
+        if a.taken.year < year:
+            _, _, i, a = _bisect(files, i, j, a, b, lambda s: s.taken.year >= year, reader)
+            if a.taken.year > year:
+                return []
+        if b.taken.year > year:
+            j, b, _, _ = _bisect(files, i, j, a, b, lambda s: s.taken.year > year, reader)
+        return [(a, b, j - i + 1)]
+    except _Mixed:
+        return _split(reader.read(files), year)
+
+
+def _split(shots: list[Shot], year: int) -> list[tuple[Shot, Shot, int]]:
+    """Full-read fallback: one run per body among the in-year shots."""
+    bodies: dict[str, list[Shot]] = defaultdict(list)
+    for s in shots:
+        if s.model and s.taken and s.taken.year == year:
+            bodies[s.camera_id].append(s)
+    runs = []
+    for body in bodies.values():
+        counted = [s for s in body if s.shutter_count is not None]
+        key = _count if counted else _taken
+        body = counted or body  # count-less files of a counted body are derivatives
+        runs.append((min(body, key=key), max(body, key=key), len(body)))
+    return runs
+
+
+if __name__ == "__main__":
+    import sys
+    import time
+
+    from .exif import ExifTool
+    from .store import Store
+
+    class _Counting:
+        """Counts the files that really reach exiftool (cache misses)."""
+
+        def __init__(self, et):
+            self.et, self.files = et, 0
+
+        def read(self, paths):
+            self.files += len(paths)
+            return self.et.read(paths)
+
+    def _line(first: Shot, last: Shot) -> str:
+        return (f"#{first.shutter_count}..#{last.shutter_count}  "
+                f"{first.taken:%Y-%m-%d}..{last.taken:%Y-%m-%d}")
+
+    _root, _year = sys.argv[1], int(sys.argv[2])
+    _store = Store()
+    _cache = _store.load_cache()
+    _seen = sum(len(names) for _, _, names in _walk(os.path.abspath(_root), []))
+    _start = time.monotonic()
+    with ExifTool() as _et:
+        _counting = _Counting(_et)
+        _result = scan(_root, _year, _counting, cache=_cache,
+                       progress=lambda d, t, m: print(f"\r{d}/{t} {m[:40]:40}", end="", file=sys.stderr))
+    _elapsed = time.monotonic() - _start
+    _store.save_cache(_cache)
+    print(file=sys.stderr)
+    print("Cameras")
+    for c in _result.cameras:
+        print(f"  {c.make} {c.model}  serial {'*' * max(len(c.serial) - 3, 0)}{c.serial[-3:]}  "
+              f"{_line(c.first, c.last)}  actuations {c.actuations}  frames {c.frames}"
+              f"{'  (estimated)' if c.estimated else ''}")
+    print("Folders")
+    for f in _result.folders:
+        for r in f.ranges:
+            print(f"  {f.rel or '.'}  [{r.first.model}]  {_line(r.first, r.last)}  "
+                  f"actuations {r.actuations}  frames {r.frames}")
+    print("Warnings")
+    for w in _result.warnings:
+        print(f"  {w}")
+    print(f"{_counting.files} files read of {_seen} seen, {len(_result.folders)} folders, {_elapsed:.1f} s")

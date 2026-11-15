@@ -1,10 +1,11 @@
 """Engine tests: only the logic that can silently go wrong."""
+import os
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from camera_odometer import calc
+from camera_odometer import calc, scan
 from camera_odometer.models import (BUSINESS, PERSONAL, Camera, CameraRange, Folder,
                                     ScanResult, Session, Shot)
 from camera_odometer.store import Store
@@ -97,6 +98,104 @@ class StoreTest(unittest.TestCase):
             next(Path(tmp).glob("session-*.json")).write_text("{not json")
             self.assertIsNone(store.load_session("/x", 2031))
             self.assertEqual(store.sessions(), [])
+
+
+class FakeExifTool:
+    """Answers read() from a dict and remembers how many files were asked for."""
+
+    def __init__(self):
+        self.meta: dict[str, Shot] = {}
+        self.files_read = 0
+
+    def read(self, paths):
+        self.files_read += len(paths)
+        return [self.meta.get(p, Shot(p)) for p in paths]
+
+
+class ScanTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = tmp.name
+        self.et = FakeExifTool()
+
+    def add(self, rel, count=None, taken=datetime(2031, 6, 1), **kw):
+        """Create an empty file and tell the fake ExifTool what it holds."""
+        path = os.path.join(self.root, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w").close()
+        if taken:
+            self.et.meta[path] = shot(path, count, taken=taken, **kw)
+
+    def test_plain_group_reads_only_the_ends(self):
+        for n in range(1, 11):  # IMG10 must sort after IMG9
+            self.add(f"trip/IMG{n}.arw", 99 + n, datetime(2031, 6, 1, 12, n))
+        self.add("trip/.IMG0.arw", 1)
+        self.add("trip/notes.txt", taken=None)
+        cache = {}
+        result = scan.scan(self.root, 2031, self.et, cache=cache)
+
+        self.assertEqual(self.et.files_read, 2)
+        (folder,), (cam,) = result.folders, result.cameras
+        (r,) = folder.ranges
+        self.assertEqual((folder.rel, folder.path), ("trip", os.path.join(self.root, "trip")))
+        self.assertEqual((r.first.shutter_count, r.last.shutter_count, r.frames, r.actuations), (100, 109, 10, 10))
+        self.assertEqual((cam.id, cam.actuations, cam.frames, cam.estimated), ("Alpha 1|0001", 10, 10, False))
+        images = scan.list_images(folder.path)
+        self.assertEqual([os.path.basename(p) for p in images], [f"IMG{n}.arw" for n in range(1, 11)])
+
+        self.assertEqual(scan.scan(self.root, 2031, self.et, cache=cache), result)
+        self.assertEqual(self.et.files_read, 2)  # the rescan came from the cache
+
+    def test_group_straddling_the_year_is_bisected(self):
+        start = datetime(2030, 12, 12)  # 20 files in 2030, 30 in 2031, 14 in 2032
+        days = [*range(20), *range(20, 50), *range(400, 414)]
+        for n, day in enumerate(days, 1):
+            self.add(f"IMG{n:04d}.ARW", n, start + timedelta(days=day))
+        result = scan.scan(self.root, 2031, self.et)
+        (r,) = result.folders[0].ranges
+        self.assertEqual(result.folders[0].rel, "")
+        self.assertEqual((r.first.shutter_count, r.last.shutter_count, r.frames), (21, 50, 30))
+        self.assertLess(self.et.files_read, 16)  # 2 ends + two bisects of at most 6 probes
+
+        (r,) = scan.scan(self.root, 2032, self.et).folders[0].ranges
+        self.assertEqual((r.first.shutter_count, r.last.shutter_count), (51, 64))
+        self.assertEqual(scan.scan(self.root, 2029, self.et).folders, [])
+
+    def test_two_bodies_in_one_group_are_split_by_full_read(self):
+        for n in range(1, 11):
+            self.add(f"wed/IMG{n:04d}.arw", 499 + n)
+            # second body: its counter moves once per two files
+            self.add(f"wed/IMG{n + 10:04d}.arw", 70 + n // 2, model="Beta 2", serial="0002")
+        result = scan.scan(self.root, 2031, self.et)
+        self.assertEqual(self.et.files_read, 20)
+        a, b = result.folders[0].ranges
+        self.assertEqual((a.camera_id, a.first.shutter_count, a.last.shutter_count, a.frames),
+                         ("Alpha 1|0001", 500, 509, 10))
+        self.assertEqual((b.camera_id, b.first.shutter_count, b.last.shutter_count, b.frames),
+                         ("Beta 2|0002", 70, 75, 10))
+        self.assertEqual([c.id for c in result.cameras], ["Alpha 1|0001", "Beta 2|0002"])
+        self.assertEqual(len(result.warnings), 1)  # Beta 2: counter moved 6 for 10 files
+        self.assertIn("wed", result.warnings[0])
+
+    def test_files_without_counts_are_derivatives_or_estimated(self):
+        for n in range(1, 6):
+            self.add(f"a/IMG{n:04d}.arw", 199 + n)
+            self.add(f"a/IMG{n:04d}.jpg", 199 + n)             # camera JPEG of the same frame
+            self.add(f"a/IMG{n:04d}-edit.dng", serial="")      # export: model, no count
+            self.add(f"exports/IMG{n:04d}.jpg", serial="")
+        for n in range(1, 5):
+            self.add(f"phone/PXL{n}.heic", taken=datetime(2031, 3, n), model="Phone", serial="")
+        result = scan.scan(self.root, 2031, self.et)
+
+        self.assertEqual([f.rel for f in result.folders], ["a", "phone"])
+        (r,) = result.folders[0].ranges
+        self.assertEqual((r.first.shutter_count, r.last.shutter_count, r.frames, r.estimated), (200, 204, 5, False))
+        (p,) = result.folders[1].ranges
+        self.assertEqual((p.estimated, p.frames, p.actuations, p.first.taken.day, p.last.taken.day),
+                         (True, 4, 4, 1, 4))
+        self.assertEqual([(c.model, c.estimated, c.actuations) for c in result.cameras],
+                         [("Alpha 1", False, 5), ("Phone", True, 4)])
 
 
 if __name__ == "__main__":
