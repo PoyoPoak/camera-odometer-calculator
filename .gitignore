@@ -1,0 +1,9 @@
+.venv*/
+vendor/
+build/
+dist/
+.data/
+__pycache__/
+*.spec
+spike/
+.remember/
