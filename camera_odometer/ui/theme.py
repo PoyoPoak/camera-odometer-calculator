@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen
 from PySide6.QtWidgets import QApplication, QCheckBox, QFrame, QLabel, QPushButton
 
 from ..models import BUSINESS, PERSONAL
@@ -145,7 +147,9 @@ def apply(app: QApplication) -> None:
         pal.setColor(role, QColor(color))
     app.setPalette(pal)
     app.setStyleSheet(QSS)
-    app.setWindowIcon(app_icon())
+    # The same icon as the exe: build.py bundles assets/ at the top of the frozen app.
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+    app.setWindowIcon(QIcon(str(base / "assets" / "icon.ico")))
 
 
 # ---- formatting -----------------------------------------------------------
@@ -245,24 +249,3 @@ class Check(QCheckBox):
         p.setPen(QColor(TEXT if on else DIM))
         p.drawText(self.rect().adjusted(28, 0, 0, 0), Qt.AlignVCenter | Qt.AlignLeft, self.text())
 
-
-def app_icon() -> QIcon:
-    """A lens ring with an amber odometer arc."""
-    pm = QPixmap(256, 256)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setPen(Qt.NoPen)
-    p.setBrush(QColor("#1d1d20"))
-    p.drawRoundedRect(8, 8, 240, 240, 56, 56)
-    ring = QRectF(56, 56, 144, 144)
-    p.setBrush(Qt.NoBrush)
-    p.setPen(QPen(QColor("#4a4a52"), 22, Qt.SolidLine, Qt.RoundCap))
-    p.drawEllipse(ring)
-    p.setPen(QPen(QColor(BUSINESS_AMBER), 22, Qt.SolidLine, Qt.RoundCap))
-    p.drawArc(ring, 90 * 16, -250 * 16)
-    p.setPen(Qt.NoPen)
-    p.setBrush(QColor(TEXT))
-    p.drawEllipse(QRectF(112, 112, 32, 32))
-    p.end()
-    return QIcon(pm)

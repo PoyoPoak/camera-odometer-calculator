@@ -10,12 +10,12 @@ from PySide6.QtWidgets import (QDialog, QFileDialog, QGridLayout, QHBoxLayout, Q
                                QWidget)
 
 from .. import calc
+from ..scan import IMAGE_EXTS
 from . import theme
 from .app import classified, is_enter
 from .theme import button, label, num
 
-IMAGE_FILTER = ("Images (*.arw *.cr2 *.cr3 *.nef *.nrw *.raf *.orf *.rw2 *.dng *.pef *.srw *.3fr "
-                "*.jpg *.jpeg *.heic);;All files (*)")
+IMAGE_FILTER = f"Photos ({' '.join('*' + ext for ext in sorted(IMAGE_EXTS))})"
 
 
 def _column(page: QWidget, width: int) -> QVBoxLayout:
@@ -255,12 +255,15 @@ class ScanPage(QWidget):
         self.title.setText(f"Scanning for photos taken in {year}")
         self.root.setText("\n".join(os.path.normpath(r) for r in roots))
         self.bar.setRange(0, 0)  # busy until the first progress report
+        self._fraction = 0.0
         self.message.setText("Looking through folders…")
         self.counts.setText("")
 
     def on_progress(self, done: int, total: int, message: str) -> None:
-        self.bar.setRange(0, max(total, 0))
-        self.bar.setValue(done)
+        # The total grows when a folder needs more reads; the bar never moves backwards for that.
+        self._fraction = max(self._fraction, done / total if total else 0.0)
+        self.bar.setRange(0, 1000)
+        self.bar.setValue(round(1000 * self._fraction))
         self.message.setText(self.message.fontMetrics().elidedText(message, Qt.ElideMiddle, 340))
         self.counts.setText(f"{num(done)} of {num(total)} files read" if total else "")
 
@@ -279,8 +282,9 @@ class CamerasPage(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        body = QVBoxLayout()
+        self.body = body = QVBoxLayout()
         body.setContentsMargins(40, 32, 40, 0)
+        body.addStretch(0)  # grows only for the empty state, to centre it
         self.title = label("", "h2")
         body.addWidget(self.title)
         body.addSpacing(6)
@@ -334,6 +338,10 @@ class CamerasPage(QWidget):
             self.title.setText(f"{n} camera{'s' if n != 1 else ''} used in {scan.year}")
             self.subtitle.setText("Each camera's shutter counter works like an odometer: last shot of the year "
                                   "minus first. Untick any camera that should not count, such as a friend's.")
+        for text in (self.title, self.subtitle):
+            text.setAlignment(Qt.AlignLeft if scan.cameras else Qt.AlignHCenter)
+        self.body.setStretch(0, 0 if scan.cameras else 2)
+        self.body.setStretch(self.body.count() - 1, 1 if scan.cameras else 3)
         cols = min(3, max(1, len(scan.cameras)))
         for i, cam in enumerate(scan.cameras):
             self.grid.addWidget(self._card(cam), i // cols, i % cols)
@@ -350,7 +358,6 @@ class CamerasPage(QWidget):
         col.setSpacing(0)
         head = QHBoxLayout()
         name = label(theme.camera_name(cam.make, cam.model))
-        name.setStyleSheet("font-size: 17px; font-weight: 600;")
         head.addWidget(name, 1)
         if cam.estimated:
             badge = label("Estimated from file count", "badge")
@@ -381,18 +388,23 @@ class CamerasPage(QWidget):
         check.setCursor(Qt.PointingHandCursor)
         check.setMinimumHeight(24)
         check.setChecked(cam.id not in self.win.session.excluded)
-        theme.restyle(card, off=not check.isChecked())
-        check.toggled.connect(lambda on, cid=cam.id, card=card: self._toggle(cid, on, card))
+
+        def shade(on: bool) -> None:  # an excluded camera's card and name are dimmed
+            theme.restyle(card, off=not on)
+            name.setStyleSheet(f"font-size: 17px; font-weight: 600; color: {theme.TEXT if on else theme.FAINT};")
+
+        shade(check.isChecked())
+        check.toggled.connect(lambda on, cid=cam.id: self._toggle(cid, on, shade))
         col.addWidget(check)
         return card
 
-    def _toggle(self, cam_id: str, on: bool, card) -> None:
+    def _toggle(self, cam_id: str, on: bool, shade) -> None:
         excluded = self.win.session.excluded
         if on and cam_id in excluded:
             excluded.remove(cam_id)
         elif not on and cam_id not in excluded:
             excluded.append(cam_id)
-        theme.restyle(card, off=not on)
+        shade(on)
         self.win.save()
         self._refresh_total()
 
@@ -492,6 +504,9 @@ class CheckDialog(QDialog):
         for v in self.values.values():
             v.setText("—")
         self.values["File"].setText(os.path.basename(path))
+        if os.path.splitext(path)[1].lower() not in IMAGE_EXTS:  # ExifTool reads far more than photos
+            self._show("", "", "This is not a photo file. Choose a raw file or a JPEG straight from the camera.")
+            return
         self._show("", "", "Reading…")
         self.win.engine.run(lambda: self.win.engine.et().read([path]),
                             lambda shots: token == self._token and self._loaded(shots),
