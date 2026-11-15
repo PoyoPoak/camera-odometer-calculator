@@ -116,7 +116,7 @@ class HomePage(QWidget):
             if total and done == total:
                 state = f"{calc.summarize(s.scan, s.labels, s.excluded).business_pct:.0f}% business"
             else:
-                state = f"{done} of {total} classified"
+                state = f"{num(done)} of {num(total)} classified"
             w = QWidget()
             row = QHBoxLayout(w)
             row.setContentsMargins(12, 0, 12, 0)

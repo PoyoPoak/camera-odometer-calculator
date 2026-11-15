@@ -251,6 +251,9 @@ class MainWindow(QMainWindow):
         if (event.type() == QEvent.KeyPress and isinstance(obj, QWidget)
                 and (obj is self or self.isAncestorOf(obj))
                 and QApplication.activeModalWidget() is None):
+            if is_enter(event) and isinstance(obj, QPushButton) and obj.focusPolicy() != Qt.NoFocus:
+                obj.click()  # Enter on a focused button presses that button, not the page's default
+                return True
             if self.stack.currentWidget().handle_key(event):
                 return True
             if event.key() == Qt.Key_Escape:

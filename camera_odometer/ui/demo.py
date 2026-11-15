@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QPushButton
 
 from ..models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Session, Shot
 from ..store import Store, app_dir
+from . import theme
 
 YEAR = datetime.now().year - 1
 ROOT = "D:/Photos/Library"
@@ -195,6 +196,7 @@ def _settle(win, timeout: float = 15.0) -> None:
         QApplication.sendPostedEvents(None, QEvent.DeferredDelete)
         QApplication.processEvents()
         busy = (win.engine.pending or classify._strip_timer.isActive() or gallery._lazy.isActive()
+                or gallery._preview_timer.isActive()
                 or classify.anim.state() == classify.anim.State.Running or win.page_name == "scanning")
         quiet = 0 if busy else quiet + 1
         if time.monotonic() > deadline:
@@ -244,6 +246,11 @@ def _selftest(win) -> int:
     check(labels.get(second) == PERSONAL, "Left marks Personal (focus on a bottom-bar button)")
     _settle(win)
     check(page.current == third, "jumped again")
+    buttons["business"].click()
+    _settle(win)
+    check(labels.get(third) == BUSINESS and page.current == fourth, "a click on Business equals Right")
+    del labels[third]
+    page._select(third)
 
     _key(page, Qt.Key_Right)
     _key(page, Qt.Key_Left)  # pressed during the flash: belongs to the next folder
@@ -298,6 +305,15 @@ def _selftest(win) -> int:
     saved = win.store.load_session(session.scan.root, session.scan.year)
     check(saved is not None and saved.labels == labels, "every change is saved")
 
+    def full_disk(_session):
+        raise OSError(28, "No space left on device")
+
+    real_save, win.store.save_session = win.store.save_session, full_disk
+    _key(tree, Qt.Key_Left)
+    check("Could not save" in win.status.text(), "a failed save is reported, not silent")
+    win.store.save_session = real_save
+    _settle(win)
+
     labels.clear()
     page._refresh()
     page._select("Clients")
@@ -328,6 +344,12 @@ def _selftest(win) -> int:
     _settle(win)
     _key(tree, Qt.Key_Escape)
     check(win.page_name == "cameras", "Esc goes back to Cameras")
+    back = next(b for b in win.pages["cameras"].findChildren(QPushButton) if b.text() == "Back")
+    _key(back, Qt.Key_Return)
+    check(win.page_name == "home", "Enter on a focused button presses that button")
+    win.go("cameras")
+    _key(win.pages["cameras"].next, Qt.Key_Return)
+    check(win.page_name == "classify", "Enter on Cameras continues")
 
     win.go("home")
     home = win.pages["home"]
@@ -389,6 +411,10 @@ def _screenshots(win, out: Path) -> int:
     win.resume(win.store.load_session(ROOT, YEAR))
     win.go("cameras")
     grab("05-cameras")
+    boxes = win.pages["cameras"].findChildren(theme.Check)
+    boxes[-1].setChecked(False)
+    grab("05b-cameras-excluded")
+    boxes[-1].setChecked(True)
 
     labels = win.session.labels
     win.go("classify")

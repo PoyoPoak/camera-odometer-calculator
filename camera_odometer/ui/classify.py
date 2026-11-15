@@ -353,9 +353,9 @@ class ClassifyPage(QWidget):
     def _refresh(self) -> None:
         """Everything that depends on the labels."""
         done, total = classified(self.win.session)
-        self.win.set_status(f"{done} / {total} classified")
+        self.win.set_status(f"{num(done)} / {num(total)} classified")
         self.banner.setVisible(bool(total) and done == total)
-        self.banner_text.setText(f"All {total} folders are classified.")
+        self.banner_text.setText(f"All {num(total)} folders are classified.")
         self.tree.viewport().update()
         self._show_state()
 
@@ -472,8 +472,8 @@ class ClassifyPage(QWidget):
         if rel is None:
             return
         self.labels[rel] = value
-        self.win.save()
         self._refresh()
+        self.win.save()  # after the refresh, so a failed save stays visible in the status
         self._flash_rel = rel
         self._direction = -1 if value == PERSONAL else 1
         theme.restyle(self.card, flash=value)
@@ -501,9 +501,10 @@ class ClassifyPage(QWidget):
             self._flash_done()
 
     def clear(self) -> None:
-        if self.current is not None and self.labels.pop(self.current, None):
-            self.win.save()
+        changed = self.current is not None and self.labels.pop(self.current, None)
         self._refresh()
+        if changed:
+            self.win.save()
 
     def move(self, step: int) -> None:
         item = self.tree.currentItem()

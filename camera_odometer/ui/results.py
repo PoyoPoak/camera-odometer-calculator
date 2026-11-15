@@ -157,7 +157,7 @@ class ResultsPage(QWidget):
         self.sub.setText(f"{num(sm.business)} of {num(sm.year_total)} actuations in {scan.year}"
                          f" · {n} camera{'s' if n != 1 else ''}")
         open_rows = sum(r.label is None for r in sm.rows)
-        self.note.setText(f"{open_rows} folder{'s' if open_rows != 1 else ''} still unclassified: "
+        self.note.setText(f"{num(open_rows)} folder{'s' if open_rows != 1 else ''} still unclassified: "
                           "not counted as business until labelled." if open_rows else "")
 
         parts = [("Business", sm.business, theme.BUSINESS_AMBER), ("Personal", sm.personal, theme.PERSONAL_BLUE),

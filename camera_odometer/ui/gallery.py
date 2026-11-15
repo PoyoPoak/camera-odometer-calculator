@@ -172,6 +172,10 @@ class GalleryPage(QWidget):
         self._lazy.setSingleShot(True)
         self._lazy.setInterval(60)  # one batch per pause in scrolling, not one per pixel
         self._lazy.timeout.connect(self._load_visible)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(120)  # a held arrow key must not queue a preview per image
+        self._preview_timer.timeout.connect(self._load_preview)
 
     # -- opening --
 
@@ -276,7 +280,11 @@ class GalleryPage(QWidget):
             self.viewer.show_image(self._previews[path], True, caption)
             return
         self.viewer.show_image(self.win.engine.thumb(path), False, caption)
-        self.win.engine.load_preview(path, self._preview_loaded)
+        self._preview_timer.start()
+
+    def _load_preview(self) -> None:
+        if self.stack.currentWidget() is self.viewer and 0 <= self.row < len(self.model.paths):
+            self.win.engine.load_preview(self.model.paths[self.row], self._preview_loaded)
 
     def _preview_loaded(self, path: str, image) -> None:
         self._previews[path] = image
