@@ -51,7 +51,7 @@ class CameraRange:
 
 @dataclass
 class Folder:
-    rel: str  # posix path relative to the scan root, "" for the root itself
+    rel: str  # posix path relative to ScanResult.root ("" for that folder itself); absolute when root is ""
     path: str  # absolute path
     ranges: list[CameraRange] = field(default_factory=list)
 
@@ -76,11 +76,15 @@ class Camera:
 
 @dataclass
 class ScanResult:
-    root: str
+    root: str  # what Folder.rel is relative to: the common parent of `roots`, "" when they share none
     year: int
     cameras: list[Camera] = field(default_factory=list)
     folders: list[Folder] = field(default_factory=list)  # in-year only, sorted by rel
     warnings: list[str] = field(default_factory=list)
+    roots: list[str] = field(default_factory=list)  # the selected photo folders; [root] when left empty
+
+    def __post_init__(self) -> None:
+        self.roots = self.roots or [self.root]
 
 
 @dataclass

@@ -40,7 +40,7 @@ def summarize(scan: ScanResult, labels: dict[str, str], excluded: Iterable[str] 
             raw[rel] += r.actuations
         if cam.estimated:
             warnings.append(f"{cam.make} {cam.model}".strip() + f" has no shutter count: "
-                            f"its {cam.frames} files are counted as actuations (estimated).")
+                            f"its {cam.frames:,} files are counted as actuations (estimated).")
             for rel, r in ranges:
                 credit[rel] += r.frames
             unattributed += cam.frames - sum(r.frames for _, r in ranges)

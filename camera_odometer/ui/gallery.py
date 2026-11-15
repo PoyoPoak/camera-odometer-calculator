@@ -189,14 +189,15 @@ class GalleryPage(QWidget):
         self.empty.setText("Loading…")
         self.stack.setCurrentWidget(self.empty)
         self.win.go("gallery")
-        self.win.engine.run(lambda: self.win.list_images(path),
+        self.win.engine.run(lambda: self.win.list_images(path) if path else [],
                             lambda paths: token == self._token and self._listed(paths),
                             lambda message: token == self._token and self.empty.setText(message))
 
     def _listed(self, paths: list[str]) -> None:
         self.count.setText(f"{num(len(paths))} photo{'s' if len(paths) != 1 else ''}")
         if not paths:
-            self.empty.setText("There are no photos directly in this folder.\nPress Esc to go back.")
+            self.empty.setText("There are no photos from this year directly in this folder.\n"
+                               "Press Esc to go back.")
             return
         self.model.reset(paths)
         self.stack.setCurrentIndex(0)

@@ -25,15 +25,18 @@ STEP_OF = {"home": 0, "scanning": 0, "cameras": 1, "classify": 2, "gallery": 2, 
 BACK = {"cameras": "home", "classify": "cameras", "results": "classify"}
 
 
-def real_scan(root, year, engine, store, progress, cancelled):
+def real_scan(roots, year, engine, store, progress, cancelled):
     """Runs on a worker thread. Returns None when the user cancelled."""
+    import errno
+
     from ..scan import ScanCancelled, scan
 
-    if not os.path.isdir(root):
-        raise FileNotFoundError(root)
+    for root in roots:
+        if not os.path.isdir(root):
+            raise FileNotFoundError(errno.ENOENT, "Folder not found", root)
     cache = store.load_cache()
     try:
-        result = scan(root, year, engine.et(), cache=cache, progress=progress, cancelled=cancelled)
+        result = scan(roots, year, engine.et(), cache=cache, progress=progress, cancelled=cancelled)
     except ScanCancelled:
         return None
     store.save_cache(cache)
@@ -203,13 +206,13 @@ class MainWindow(QMainWindow):
 
     # -- scan --
 
-    def start_scan(self, root: str, year: int) -> None:
+    def start_scan(self, roots: list[str], year: int) -> None:
         settings = self.store.settings()
-        settings.update(last_root=root, last_year=year)
+        settings.update(last_roots=roots, last_year=year)
         try:
             self.store.save_settings(settings)
         except OSError:
-            pass  # remembering the folder is a convenience; the scan itself will report real trouble
+            pass  # remembering the folders is a convenience; the scan itself will report real trouble
         cancel = self._cancel = threading.Event()
         last = [0.0]
 
@@ -219,9 +222,9 @@ class MainWindow(QMainWindow):
                 last[0] = now
                 self.progress.emit(done, total, message)
 
-        self.pages["scanning"].begin(root, year)
+        self.pages["scanning"].begin(roots, year)
         self.go("scanning")
-        self.engine.run(lambda: self.scan_fn(root, year, self.engine, self.store, progress, cancel.is_set),
+        self.engine.run(lambda: self.scan_fn(roots, year, self.engine, self.store, progress, cancel.is_set),
                         lambda result: self._scan_done(result, cancel),
                         lambda message: self._scan_failed(message, cancel))
 
@@ -232,8 +235,8 @@ class MainWindow(QMainWindow):
     def _scan_done(self, result, cancel) -> None:
         if cancel.is_set() or result is None:
             return
-        # A rescan keeps the labels and exclusions already made for this folder and year.
-        old = self.store.load_session(result.root, result.year)
+        # A rescan keeps the labels and exclusions already made for these folders and year.
+        old = self.store.load_session(result.roots, result.year)
         self.session = Session(result, dict(old.labels) if old else {}, list(old.excluded) if old else [])
         self.reached = 1
         self.save()

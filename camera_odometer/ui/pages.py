@@ -44,15 +44,18 @@ class HomePage(QWidget):
         col.addWidget(label("Find out how much of your camera use was for business.", "dim"))
         col.addSpacing(32)
 
-        col.addWidget(label("PHOTO FOLDER", "caps"))
+        col.addWidget(label("PHOTO FOLDERS", "caps"))
         col.addSpacing(8)
+        self.roots: list[str] = []
+        self.root_rows = QVBoxLayout()
+        self.root_rows.setSpacing(6)
+        col.addLayout(self.root_rows)
         row = QHBoxLayout()
         row.setSpacing(8)
         self.path = QLineEdit()
-        self.path.setPlaceholderText("The folder that holds your photo folders")
         self.path.textEdited.connect(lambda: self.show_error(""))
         row.addWidget(self.path, 1)
-        row.addWidget(button("Browse…", on_click=self.browse))
+        row.addWidget(button("Add folder…", on_click=self.browse))
         col.addLayout(row)
         col.addSpacing(20)
 
@@ -104,7 +107,9 @@ class HomePage(QWidget):
         col.addStretch(3)
 
         settings = win.store.settings()
-        self.path.setText(str(settings.get("last_root") or ""))
+        last = settings.get("last_roots")
+        self.roots = [r for r in last if isinstance(r, str)] if isinstance(last, list) else []
+        self._show_roots()
         if isinstance(settings.get("last_year"), int):
             self.year.setValue(settings["last_year"])
 
@@ -121,10 +126,9 @@ class HomePage(QWidget):
             row = QHBoxLayout(w)
             row.setContentsMargins(12, 0, 12, 0)
             row.setSpacing(16)
-            root = os.path.normpath(s.scan.root)
-            name = label(os.path.basename(root) or root)
+            name = label(theme.library_name(s.scan))
             name.setMinimumWidth(120)
-            path = label(root, "faint")
+            path = label(os.path.normpath(s.scan.root) if s.scan.root else "", "faint")
             path.setMinimumWidth(40)
             row.addWidget(name)
             row.addWidget(path, 1)
@@ -150,6 +154,8 @@ class HomePage(QWidget):
         if is_enter(event):
             if self.recent.hasFocus() and self.recent.currentItem():
                 self.resume(self.recent.currentItem())
+            elif self.path.text().strip():
+                self.add(self.path.text())  # Enter adds a typed folder; Enter again scans
             else:
                 self.scan()
             return True
@@ -159,20 +165,52 @@ class HomePage(QWidget):
         self.error.setText(message)
         self.error.setVisible(bool(message))
 
+    def _show_roots(self) -> None:
+        while self.root_rows.count():
+            self.root_rows.takeAt(0).widget().deleteLater()
+        for root in self.roots:
+            w = theme.frame("folder")
+            row = QHBoxLayout(w)
+            row.setContentsMargins(12, 2, 2, 2)
+            name = label(root)
+            name.setMinimumWidth(40)
+            name.setToolTip(root)
+            row.addWidget(name, 1)
+            remove = button("Remove", "ghost", lambda root=root: self.remove(root))
+            remove.setAccessibleName(f"Remove {root}")
+            row.addWidget(remove)
+            self.root_rows.addWidget(w)
+        self.root_rows.setContentsMargins(0, 0, 0, 6 if self.roots else 0)
+        self.path.setPlaceholderText("Paste another folder path and press Enter" if self.roots else
+                                     "Paste the path of a folder that holds your photos, or choose Add folder…")
+
+    def add(self, path: str) -> None:
+        path = path.strip().strip('"')
+        if path:
+            path = os.path.normpath(path)
+            if os.path.normcase(path) not in map(os.path.normcase, self.roots):
+                self.roots.append(path)
+                self._show_roots()
+        self.path.clear()
+        self.show_error("")
+
+    def remove(self, root: str) -> None:
+        self.roots.remove(root)
+        self._show_roots()
+        self.path.setFocus()
+
     def browse(self):
-        folder = QFileDialog.getExistingDirectory(self, "Choose your photo folder", self.path.text())
+        folder = QFileDialog.getExistingDirectory(self, "Add a photo folder", self.roots[-1] if self.roots else "")
         if folder:
-            self.path.setText(os.path.normpath(folder))
-            self.show_error("")
+            self.add(folder)
 
     def scan(self):
-        root = self.path.text().strip().strip('"')
-        if not root:
-            self.show_error("Choose your photo folder first.")
+        self.add(self.path.text())
+        if not self.roots:
+            self.show_error("Add a photo folder first.")
             self.path.setFocus()
             return
-        self.show_error("")
-        self.win.start_scan(root, self.year.value())
+        self.win.start_scan(list(self.roots), self.year.value())
 
     def resume(self, item):
         self.win.resume(self._sessions[self.recent.row(item)])
@@ -213,9 +251,9 @@ class ScanPage(QWidget):
         col.addLayout(row)
         col.addStretch(5)
 
-    def begin(self, root: str, year: int) -> None:
+    def begin(self, roots: list[str], year: int) -> None:
         self.title.setText(f"Scanning for photos taken in {year}")
-        self.root.setText(os.path.normpath(root))
+        self.root.setText("\n".join(os.path.normpath(r) for r in roots))
         self.bar.setRange(0, 0)  # busy until the first progress report
         self.message.setText("Looking through folders…")
         self.counts.setText("")
@@ -285,12 +323,12 @@ class CamerasPage(QWidget):
         scan = s.scan
         while self.grid.count():
             self.grid.takeAt(0).widget().deleteLater()
-        self.win.set_status(f"{os.path.basename(os.path.normpath(scan.root))} · {scan.year}")
+        self.win.set_status(f"{theme.library_name(scan)} · {scan.year}")
         if not scan.cameras:
             self.title.setText(f"No photos from {scan.year} were found")
             self.subtitle.setText(
                 "The scan looks for original camera files (raw files, or JPEGs straight from the camera) "
-                f"taken in {scan.year}. Check that you picked the right folder and tax year, then scan again.")
+                f"taken in {scan.year}. Check that you picked the right folders and tax year, then scan again.")
         else:
             n = len(scan.cameras)
             self.title.setText(f"{n} camera{'s' if n != 1 else ''} used in {scan.year}")

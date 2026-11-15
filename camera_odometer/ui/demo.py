@@ -20,7 +20,8 @@ from ..store import Store, app_dir
 from . import theme
 
 YEAR = datetime.now().year - 1
-ROOT = "D:/Photos/Library"
+ROOT = "D:/Photos"  # common parent of the two demo photo folders
+ROOTS = ("Library", "Studio")
 
 _A = ("SONY", "ILCE-7CM2", "04417358")
 _B = ("SONY", "ILCE-7M4", "03902117")
@@ -28,32 +29,32 @@ _DRONE = ("DJI", "FC3582", "")
 
 # rel, [(body, first count, last count, frames, (month, day), (month, day))]
 _FOLDERS = [
-    ("01-18 Winter Lakeshore", [(_A, 14210, 14890, 601, (1, 18), (1, 18))]),
-    ("02-08 Studio Headshots", [(_A, 14900, 15720, 780, (2, 8), (2, 8)),
+    ("Library/01-18 Winter Lakeshore", [(_A, 14210, 14890, 601, (1, 18), (1, 18))]),
+    ("Library/02-08 Studio Headshots", [(_A, 14900, 15720, 780, (2, 8), (2, 8)),
                                 (_B, 9920, 10310, 377, (2, 8), (2, 8))]),
-    ("03-14 Harbor Portraits", [(_A, 15730, 16480, 702, (3, 14), (3, 15))]),
-    ("04-05 Spring Trail Hike", [(_A, 16490, 16912, 365, (4, 5), (4, 5))]),
-    ("04-26 Riverside Marathon", [(_A, 16920, 17400, 455, (4, 26), (4, 26))]),
-    ("04-26 Riverside Marathon/Course", [(_B, 10320, 11100, 744, (4, 26), (4, 26))]),
-    ("04-26 Riverside Marathon/Finish Line", [(_A, 17401, 18250, 812, (4, 26), (4, 26))]),
-    ("05-17 Aerial Vineyard", [(_DRONE, None, None, 232, (5, 17), (5, 17))]),
-    ("07-19 Coastal Road Trip", [(_A, 20960, 22400, 1198, (7, 19), (8, 2)),
+    ("Library/03-14 Harbor Portraits", [(_A, 15730, 16480, 702, (3, 14), (3, 15))]),
+    ("Library/04-05 Spring Trail Hike", [(_A, 16490, 16912, 365, (4, 5), (4, 5))]),
+    ("Library/04-26 Riverside Marathon", [(_A, 16920, 17400, 455, (4, 26), (4, 26))]),
+    ("Library/04-26 Riverside Marathon/Course", [(_B, 10320, 11100, 744, (4, 26), (4, 26))]),
+    ("Library/04-26 Riverside Marathon/Finish Line", [(_A, 17401, 18250, 812, (4, 26), (4, 26))]),
+    ("Library/05-17 Aerial Vineyard", [(_DRONE, None, None, 232, (5, 17), (5, 17))]),
+    ("Library/07-19 Coastal Road Trip", [(_A, 20960, 22400, 1198, (7, 19), (8, 2)),
                                  (_DRONE, None, None, 180, (7, 20), (8, 1))]),
-    ("07-26 Lighthouse Engagement", [(_A, 21500, 21790, 268, (7, 26), (7, 26))]),
-    ("10-31 Costume Party", [(_A, 23700, 24105, 371, (10, 31), (10, 31))]),
-    ("11-08 Silent Recital", [(_B, 12110, 12480, 640, (11, 8), (11, 8))]),
-    ("Clients/06-21 Garden Wedding", [(_A, 18300, 20950, 2410, (6, 20), (6, 21)),
+    ("Library/07-26 Lighthouse Engagement", [(_A, 21500, 21790, 268, (7, 26), (7, 26))]),
+    ("Library/10-31 Costume Party", [(_A, 23700, 24105, 371, (10, 31), (10, 31))]),
+    ("Library/11-08 Silent Recital", [(_B, 12110, 12480, 640, (11, 8), (11, 8))]),
+    ("Studio/06-21 Garden Wedding", [(_A, 18300, 20950, 2410, (6, 20), (6, 21)),
                                       (_B, 11110, 12100, 905, (6, 21), (6, 21))]),
-    ("Clients/09-12 Product Catalog", [(_A, 22600, 23650, 988, (9, 12), (9, 13))]),
+    ("Studio/09-12 Product Catalog", [(_A, 22600, 23650, 988, (9, 12), (9, 13))]),
 ]
 
 DEMO_LABELS = {
-    "01-18 Winter Lakeshore": PERSONAL,
-    "02-08 Studio Headshots": BUSINESS,
-    "03-14 Harbor Portraits": BUSINESS,
-    "04-26 Riverside Marathon": BUSINESS,  # its two sub-folders inherit
-    "07-19 Coastal Road Trip": PERSONAL,
-    "Clients/06-21 Garden Wedding": BUSINESS,
+    "Library/01-18 Winter Lakeshore": PERSONAL,
+    "Library/02-08 Studio Headshots": BUSINESS,
+    "Library/03-14 Harbor Portraits": BUSINESS,
+    "Library/04-26 Riverside Marathon": BUSINESS,  # its two sub-folders inherit
+    "Library/07-19 Coastal Road Trip": PERSONAL,
+    "Studio/06-21 Garden Wedding": BUSINESS,
 }
 
 
@@ -83,14 +84,15 @@ def demo_scan(root: str = ROOT, year: int = YEAR) -> ScanResult:
         last = max((r.last for r in ranges), key=key)
         cameras.append(Camera(cid, first.make, first.model, first.serial, first, last,
                               sum(r.frames for r in ranges), est))
-    warnings = ["11-08 Silent Recital: the counter moved 371 but the folder holds 640 files "
+    warnings = ["Library/11-08 Silent Recital: the counter moved 371 but the folder holds 640 files "
                 "(electronic shutter?)."]
-    return ScanResult(root, year, cameras, sorted(folders, key=lambda f: f.rel), warnings)
+    return ScanResult(root, year, cameras, sorted(folders, key=lambda f: f.rel), warnings,
+                      [f"{root}/{name}" for name in ROOTS])
 
 
-def fake_scan(root, year, engine, store, progress, cancelled):
+def fake_scan(roots, year, engine, store, progress, cancelled):
     """Stands in for the real scan in demo mode: same signature as app.real_scan."""
-    result = demo_scan(root or ROOT, year)
+    result = demo_scan(ROOT, year)
     total = 618
     for done in range(total + 1):
         if cancelled():
@@ -177,10 +179,12 @@ def make_window(data: Path | None = None):
     from .workers import Engine
 
     store = Store(data or Path(tempfile.mkdtemp(prefix="camera-odometer-demo-")))
-    store.save_settings({"last_root": ROOT.replace("/", "\\"), "last_year": YEAR})
-    done = Session(demo_scan("D:/Photos/Archive", YEAR - 1))
-    done.labels = {"": BUSINESS, "01-18 Winter Lakeshore": PERSONAL, "04-05 Spring Trail Hike": PERSONAL,
-                   "07-19 Coastal Road Trip": PERSONAL, "10-31 Costume Party": PERSONAL}
+    store.save_settings({"last_roots": [f"{ROOT}/{name}".replace("/", "\\") for name in ROOTS],
+                         "last_year": YEAR})
+    done = Session(demo_scan("E:/Archive", YEAR - 1))
+    done.labels = {"": BUSINESS, "Library/01-18 Winter Lakeshore": PERSONAL,
+                   "Library/04-05 Spring Trail Hike": PERSONAL, "Library/07-19 Coastal Road Trip": PERSONAL,
+                   "Library/10-31 Costume Party": PERSONAL}
     store.save_session(done)
     store.save_session(Session(demo_scan(), dict(DEMO_LABELS)))
     return MainWindow(store, Engine(DemoExifTool), scan_fn=fake_scan, list_images=list_images)
@@ -228,7 +232,7 @@ def _selftest(win) -> int:
     win.resume(session)
     _settle(win)
     first, second, third, fourth = (f.rel for f in session.scan.folders[:4])
-    parent, child = "04-26 Riverside Marathon", "04-26 Riverside Marathon/Course"
+    parent, child = "Library/04-26 Riverside Marathon", "Library/04-26 Riverside Marathon/Course"
 
     check(win.page_name == "classify" and page.current == first, "resume opens Classify on the first folder")
     _key(tree, Qt.Key_Down)
@@ -272,7 +276,7 @@ def _selftest(win) -> int:
     check(child not in labels and effective_label(child, labels) == BUSINESS,
           "sub-folders inherit the parent's label")
     _settle(win)
-    check(page.current == "05-17 Aerial Vineyard", "the jump skips folders that inherited a label")
+    check(page.current == "Library/05-17 Aerial Vineyard", "the jump skips folders that inherited a label")
     page.items[parent].setExpanded(True)
 
     page._select(parent)
@@ -302,7 +306,7 @@ def _selftest(win) -> int:
     check(page.current == first and not page.banner.isHidden(), "nothing left: stay put and offer results")
     check(win.status.text().startswith(f"{len(session.scan.folders)} / "), "counter shows all classified")
 
-    saved = win.store.load_session(session.scan.root, session.scan.year)
+    saved = win.store.load_session(session.scan.roots, session.scan.year)
     check(saved is not None and saved.labels == labels, "every change is saved")
 
     def full_disk(_session):
@@ -316,10 +320,10 @@ def _selftest(win) -> int:
 
     labels.clear()
     page._refresh()
-    page._select("Clients")
+    page._select("Studio")
     _key(tree, Qt.Key_Right)
-    check(labels == {"Clients": BUSINESS}
-          and effective_label("Clients/06-21 Garden Wedding", labels) == BUSINESS,
+    check(labels == {"Studio": BUSINESS}
+          and effective_label("Studio/06-21 Garden Wedding", labels) == BUSINESS,
           "a folder without shots of its own can be classified and passes its label down")
     _settle(win)
 
@@ -353,6 +357,15 @@ def _selftest(win) -> int:
 
     win.go("home")
     home = win.pages["home"]
+    check(len(home.roots) == 2, "Home remembers the photo folders used last")
+    home.path.setText('"E:\\More Photos"')
+    _key(home.path, Qt.Key_Return)
+    check(win.page_name == "home" and home.roots[-1] == "E:\\More Photos" and not home.path.text(),
+          "Enter adds a typed folder to the list instead of scanning")
+    _settle(win)
+    _key([b for b in home.findChildren(QPushButton) if b.text() == "Remove"][-1], Qt.Key_Return)
+    check(len(home.roots) == 2, "Enter on a focused Remove button removes that folder")
+    _settle(win)
     _key(home.path, Qt.Key_Return)
     check(win.page_name == "scanning", "Enter on Home starts the scan")
     _key(win, Qt.Key_Escape)
@@ -393,9 +406,9 @@ def _screenshots(win, out: Path) -> int:
     grab("02-home-error")
     home.show_error("")
 
-    win.pages["scanning"].begin(ROOT, YEAR)
+    win.pages["scanning"].begin(demo_scan().roots, YEAR)
     win.stack.setCurrentWidget(win.pages["scanning"])
-    win.pages["scanning"].on_progress(412, 618, "Clients/06-21 Garden Wedding")
+    win.pages["scanning"].on_progress(412, 618, "Studio/06-21 Garden Wedding")
     QApplication.processEvents()
     for suffix, size in (("", (1280, 800)), ("-min", (1100, 700))):
         win.resize(*size)
@@ -404,11 +417,11 @@ def _screenshots(win, out: Path) -> int:
         count += 1
     win.resize(1280, 800)
 
-    win.session = Session(ScanResult(ROOT, YEAR))
+    win.session = Session(ScanResult(ROOT, YEAR, roots=demo_scan().roots))
     win.reached = 1
     win.go("cameras")
     grab("04-cameras-empty")
-    win.resume(win.store.load_session(ROOT, YEAR))
+    win.resume(win.store.load_session(demo_scan().roots, YEAR))
     win.go("cameras")
     grab("05-cameras")
     boxes = win.pages["cameras"].findChildren(theme.Check)
@@ -419,13 +432,13 @@ def _screenshots(win, out: Path) -> int:
     labels = win.session.labels
     win.go("classify")
     grab("06-classify")
-    classify._select("Clients/06-21 Garden Wedding")
+    classify._select("Studio/06-21 Garden Wedding")
     grab("06b-classify-two-cameras")
-    classify._select("04-26 Riverside Marathon/Course")
+    classify._select("Library/04-26 Riverside Marathon/Course")
     grab("07-classify-inherited")
-    classify._select("Clients")
+    classify._select("Studio")
     grab("08-classify-parent")
-    classify._select("04-05 Spring Trail Hike")
+    classify._select("Library/04-05 Spring Trail Hike")
     _settle(win)
     classify.mark(BUSINESS)
     classify.anim.setCurrentTime(120)
@@ -442,10 +455,10 @@ def _screenshots(win, out: Path) -> int:
     grab("10-classify-all-done")
     labels.clear()
     labels.update(keep)
-    del labels["04-05 Spring Trail Hike"]
+    del labels["Library/04-05 Spring Trail Hike"]
     classify._refresh()
 
-    classify._select("03-14 Harbor Portraits")
+    classify._select("Library/03-14 Harbor Portraits")
     classify.open_gallery()
     grab("11-gallery")
     gallery.grid.setCurrentIndex(gallery.model.index(5))
@@ -453,7 +466,7 @@ def _screenshots(win, out: Path) -> int:
     grab("12-image")
     gallery.step_back()
     gallery.step_back()
-    classify._select("Clients")
+    classify._select("Studio")
     classify.open_gallery()
     grab("13-gallery-empty")
     gallery.step_back()

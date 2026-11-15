@@ -305,7 +305,9 @@ class ClassifyPage(QWidget):
         self._picks.clear()
         self.folders = {f.rel: f for f in scan.folders}
         self.tree.clear()
-        root_name = os.path.basename(os.path.normpath(scan.root)) or scan.root
+        root_name = "Photo folders"  # folders on different drives have no common parent
+        if scan.root:
+            root_name = os.path.basename(os.path.normpath(scan.root)) or scan.root
         self.items = {"": QTreeWidgetItem(self.tree, [root_name])}
         self.items[""].setData(0, REL, "")
         for rel in sorted(self.folders):
@@ -442,11 +444,10 @@ class ClassifyPage(QWidget):
         rel = self.current
         if rel is None:
             return
-        path = self.folders[rel].path if rel in self.folders else os.path.join(self._scan.root, rel)
         engine = self.win.engine
 
-        def pick():
-            images = self.win.list_images(path)
+        def pick():  # rows that only group other folders have no photos of their own to show
+            images = self.win.list_images(self.folders[rel].path) if rel in self.folders else []
             n = min(8, len(images))
             return [images[i * (len(images) - 1) // max(n - 1, 1)] for i in range(n)], len(images)
 
@@ -520,7 +521,7 @@ class ClassifyPage(QWidget):
     def open_gallery(self) -> None:
         rel = self.current
         if rel is not None:
-            path = self.folders[rel].path if rel in self.folders else os.path.join(self._scan.root, rel)
+            path = self.folders[rel].path if rel in self.folders else ""
             self.win.pages["gallery"].open(rel, self.items[rel].text(0), path)
 
     def handle_key(self, event) -> bool:

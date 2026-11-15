@@ -1,6 +1,7 @@
 """Palette, stylesheet and the small formatting / painting helpers every page shares."""
 from __future__ import annotations
 
+import os
 from datetime import datetime
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -83,6 +84,7 @@ QSpinBox::up-button, QSpinBox::down-button {{ width: 0; height: 0; border: none;
 QPushButton[kind="stepper"] {{ font-size: 18px; padding: 4px 0 7px 0; }}
 
 QFrame[role="card"] {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; }}
+QFrame[role="folder"] {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 6px; }}
 QFrame[role="card"][flash="personal"] {{ border-color: {PERSONAL_BLUE}; background: #1b2434; }}
 QFrame[role="card"][flash="business"] {{ border-color: {BUSINESS_AMBER}; background: #2c2416; }}
 QFrame[role="card"][off="true"] {{ background: {BG}; }}
@@ -174,6 +176,11 @@ def camera_name(make: str, model: str) -> str:
     if not brand or model.lower().startswith(brand.lower()):
         return model or make or "Unknown camera"
     return f"{brand.capitalize() if brand.isupper() and len(brand) > 3 else brand} {model}"
+
+
+def library_name(scan) -> str:
+    """The selected photo folders by name: "Library + Studio"."""
+    return " + ".join(os.path.basename(os.path.normpath(r)) or r for r in scan.roots)
 
 
 # ---- widgets --------------------------------------------------------------

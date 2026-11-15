@@ -44,13 +44,13 @@ class Store:
     def save_cache(self, cache: dict) -> None:
         self._write("cache.json", cache)
 
-    def load_session(self, root: str, year: int) -> Session | None:
-        return self._read_session(self.dir / _session_name(root, year))
+    def load_session(self, roots: list[str], year: int) -> Session | None:
+        return self._read_session(self.dir / _session_name(roots, year))
 
     def save_session(self, session: Session) -> None:
         """Stamps `session.saved_at` and writes it."""
         session.saved_at = datetime.now()
-        self._write(_session_name(session.scan.root, session.scan.year), dataclasses.asdict(session))
+        self._write(_session_name(session.scan.roots, session.scan.year), dataclasses.asdict(session))
 
     def sessions(self) -> list[Session]:
         """Every readable saved session, newest first."""
@@ -87,8 +87,9 @@ class Store:
             raise
 
 
-def _session_name(root: str, year: int) -> str:
-    key = f"{os.path.normcase(os.path.normpath(root))}|{year}"
+def _session_name(roots: list[str], year: int) -> str:
+    """One session per set of photo folders and year, whatever order the folders were picked in."""
+    key = "|".join(sorted(os.path.normcase(os.path.normpath(r)) for r in roots)) + f"|{year}"
     return f"session-{hashlib.sha1(key.encode()).hexdigest()[:12]}.json"
 
 
@@ -110,5 +111,5 @@ def _session(d: dict) -> Session:
         s["root"], s["year"],
         [Camera(**{**c, "first": _shot(c["first"]), "last": _shot(c["last"])}) for c in s["cameras"]],
         [Folder(f["rel"], f["path"], [_range(r) for r in f["ranges"]]) for f in s["folders"]],
-        list(s["warnings"]))
+        list(s["warnings"]), list(s["roots"]))
     return Session(scan, dict(d["labels"]), list(d["excluded"]), _dt(d["saved_at"]))

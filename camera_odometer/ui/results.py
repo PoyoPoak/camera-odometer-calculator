@@ -151,7 +151,7 @@ class ResultsPage(QWidget):
         scan = s.scan
         self.summary = sm = calc.summarize(scan, s.labels, s.excluded)
         included = [c for c in scan.cameras if c.id not in s.excluded]
-        self.win.set_status(f"{os.path.basename(os.path.normpath(scan.root))} · {scan.year}")
+        self.win.set_status(f"{theme.library_name(scan)} · {scan.year}")
         self.pct.setText(f"{sm.business_pct:.1f}%")
         n = len(included)
         self.sub.setText(f"{num(sm.business)} of {num(sm.year_total)} actuations in {scan.year}"
@@ -221,7 +221,7 @@ class ResultsPage(QWidget):
     def summary_text(self) -> str:
         s, sm = self.win.session, self.summary
         lines = [f"Camera Odometer: tax year {s.scan.year}",
-                 f"Photo folder: {os.path.normpath(s.scan.root)}",
+                 *(f"Photo folder: {os.path.normpath(r)}" for r in s.scan.roots),
                  f"Business use: {sm.business_pct:.1f}%",
                  f"Year total: {num(sm.year_total)} actuations",
                  f"  Business: {num(sm.business)}",

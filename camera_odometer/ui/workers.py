@@ -19,7 +19,8 @@ def friendly(exc: BaseException) -> str:
         return ("ExifTool, the helper that reads photo metadata, could not be started. "
                 "Make sure the exiftool folder is still next to the app, or reinstall it.")
     if isinstance(exc, FileNotFoundError):
-        return "That folder could not be found. Check that the drive is connected and try again."
+        which = f"The folder “{exc.filename}”" if exc.filename else "That folder"
+        return f"{which} could not be found. Check that the drive is connected and try again."
     if isinstance(exc, PermissionError):
         return "Windows would not let the app read that folder. Check its permissions and try again."
     if isinstance(exc, OSError):

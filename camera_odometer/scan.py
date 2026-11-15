@@ -32,11 +32,12 @@ def list_images(folder: str) -> list[str]:
     return [os.path.join(folder, name) for name in _scandir(folder)[0]]
 
 
-def scan(root: str, year: int, et, *,
+def scan(roots: str | list[str], year: int, et, *,
          cache: dict | None = None,
          progress: Callable[[int, int, str], None] | None = None,
          cancelled: Callable[[], bool] | None = None) -> ScanResult:
-    root = os.path.abspath(root)
+    """Scan one photo folder or several as one library. See _select for how rels are formed."""
+    root, roots, root_rels = _select(roots)
     warnings: list[str] = []
     reader = _Reader(et, {} if cache is None else cache, progress, cancelled)
     reader.report("Listing folders")
@@ -44,14 +45,15 @@ def scan(root: str, year: int, et, *,
     # 1-2. Walk, and group each folder's images by (prefix, extension).
     paths: dict[str, str] = {}
     groups: list[tuple[str, str, list[str]]] = []  # (folder rel, prefix, files in natural order)
-    for rel, path, names in _walk(root, warnings):
-        reader.check_cancelled()
-        paths[rel] = path
-        by_key: dict[tuple[str, str], list[str]] = defaultdict(list)
-        for name in names:
-            stem, ext = os.path.splitext(name)
-            by_key[re.match(r"\D*", stem).group(), ext.lower()].append(os.path.join(path, name))
-        groups += [(rel, prefix, files) for (prefix, _), files in by_key.items()]
+    for start in zip(root_rels, roots):
+        for rel, path, names in _walk(*start, warnings):
+            reader.check_cancelled()
+            paths[rel] = path
+            by_key: dict[tuple[str, str], list[str]] = defaultdict(list)
+            for name in names:
+                stem, ext = os.path.splitext(name)
+                by_key[re.match(r"\D*", stem).group(), ext.lower()].append(os.path.join(path, name))
+            groups += [(rel, prefix, files) for (prefix, _), files in by_key.items()]
 
     # 3. Probe both ends of every group, batched.
     ends = list(dict.fromkeys(p for _, _, files in groups for p in (files[0], files[-1])))
@@ -90,8 +92,8 @@ def scan(root: str, year: int, et, *,
         folders.setdefault(rel, Folder(rel, paths[rel])).ranges.append(rng)
         by_body[camera_id].append(rng)
         if counted and rng.actuations < 0.9 * rng.frames:
-            warnings.append(f"{rel or 'Top folder'}: the {rng.first.model} counter moved {rng.actuations} "
-                            f"but the folder holds {rng.frames} files (electronic shutter?).")
+            warnings.append(f"{rel or 'Top folder'}: the {rng.first.model} counter moved {rng.actuations:,} "
+                            f"but the folder holds {rng.frames:,} files (electronic shutter?).")
 
     cameras = []
     for camera_id, ranges in sorted(by_body.items()):
@@ -101,7 +103,32 @@ def scan(root: str, year: int, et, *,
         cameras.append(Camera(camera_id, first.make, first.model, first.serial, first, last,
                               sum(r.frames for r in ranges), ranges[0].estimated))
     reader.report("Done")
-    return ScanResult(root, year, cameras, [folders[rel] for rel in sorted(folders)], warnings)
+    return ScanResult(root, year, cameras, [folders[rel] for rel in sorted(folders)], warnings, roots)
+
+
+def _inside(path: str, parent: str) -> bool:
+    try:
+        return os.path.normcase(os.path.commonpath([path, parent])) == os.path.normcase(parent)
+    except ValueError:  # different drives
+        return False
+
+
+def _select(roots: str | list[str]) -> tuple[str, list[str], list[str]]:
+    """(common parent, roots, each root's rel). A root inside another selected root is dropped.
+
+    One root is its own parent (rel ""). Roots on different drives have no parent: the parent
+    is "" and every rel is an absolute path with "/" separators.
+    """
+    paths = [os.path.abspath(p) for p in ([roots] if isinstance(roots, str) else roots)]
+    paths = list({os.path.normcase(p): p for p in paths}.values())
+    roots = [p for p in paths if not any(q != p and _inside(p, q) for q in paths)]
+    if len(roots) == 1:
+        return roots[0], roots, [""]
+    try:
+        parent = os.path.commonpath(roots)
+    except ValueError:  # different drives, or no roots at all
+        return "", roots, [p.replace("\\", "/") for p in roots]
+    return parent, roots, [os.path.relpath(p, parent).replace(os.sep, "/") for p in roots]
 
 
 def _count(shot: Shot) -> int:
@@ -136,16 +163,16 @@ def _scandir(folder: str) -> tuple[list[str], list[str]]:
     return sorted(files, key=_natural), sorted(dirs, key=_natural)
 
 
-def _walk(root: str, warnings: list[str]) -> Iterator[tuple[str, str, list[str]]]:
-    """(rel, path, image names) for every folder that holds images. No file is opened."""
-    stack = [("", root)]
+def _walk(root_rel: str, root: str, warnings: list[str]) -> Iterator[tuple[str, str, list[str]]]:
+    """(rel, path, image names) for every folder under root that holds images. No file is opened."""
+    stack = [(root_rel, root)]
     while stack:
         rel, path = stack.pop()
         try:
             files, dirs = _scandir(path)
         except OSError as exc:
-            if not rel:
-                raise  # the root itself is unreadable: the caller's problem
+            if path == root:
+                raise  # a selected folder itself is unreadable: the caller's problem
             warnings.append(f"{rel}: could not be read ({exc.strerror or exc}).")
             continue
         if files:
@@ -285,6 +312,7 @@ if __name__ == "__main__":
     import sys
     import time
 
+    from .calc import summarize
     from .exif import ExifTool
     from .store import Store
 
@@ -302,14 +330,17 @@ if __name__ == "__main__":
         return (f"#{first.shutter_count}..#{last.shutter_count}  "
                 f"{first.taken:%Y-%m-%d}..{last.taken:%Y-%m-%d}")
 
-    _root, _year = sys.argv[1], int(sys.argv[2])
+    if len(sys.argv) < 3:
+        sys.exit("usage: python3 -m camera_odometer.scan YEAR FOLDER [FOLDER ...]")
+    _year, _roots = int(sys.argv[1]), sys.argv[2:]
     _store = Store()
     _cache = _store.load_cache()
-    _seen = sum(len(names) for _, _, names in _walk(os.path.abspath(_root), []))
+    _, _kept, _rels = _select(_roots)
+    _seen = sum(len(names) for _start in zip(_rels, _kept) for _, _, names in _walk(*_start, []))
     _start = time.monotonic()
     with ExifTool() as _et:
         _counting = _Counting(_et)
-        _result = scan(_root, _year, _counting, cache=_cache,
+        _result = scan(_roots, _year, _counting, cache=_cache,
                        progress=lambda d, t, m: print(f"\r{d}/{t} {m[:40]:40}", end="", file=sys.stderr))
     _elapsed = time.monotonic() - _start
     _store.save_cache(_cache)
@@ -327,4 +358,7 @@ if __name__ == "__main__":
     print("Warnings")
     for w in _result.warnings:
         print(f"  {w}")
-    print(f"{_counting.files} files read of {_seen} seen, {len(_result.folders)} folders, {_elapsed:.1f} s")
+    _sum = summarize(_result, {})
+    print(f"Year total {_sum.year_total:,}: {_sum.unclassified:,} inside folders, "
+          f"{_sum.unattributed:,} outside any folder")
+    print(f"{_counting.files:,} files read of {_seen:,} seen, {len(_result.folders)} folders, {_elapsed:.1f} s")

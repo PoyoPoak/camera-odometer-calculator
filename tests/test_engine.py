@@ -84,19 +84,19 @@ class StoreTest(unittest.TestCase):
     def test_session_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(Path(tmp))
-            self.assertIsNone(store.load_session("/x", 2031))
+            self.assertIsNone(store.load_session(["/x"], 2031))
             session = Session(sample_scan(), {"biz": BUSINESS}, ["Beta 2|0002"])
             store.save_session(session)
-            loaded = store.load_session("/x", 2031)
+            loaded = store.load_session(["/x"], 2031)
             self.assertEqual(loaded, session)
             self.assertIsNotNone(loaded.saved_at)
             self.assertEqual(store.sessions(), [session])
-            self.assertIsNone(store.load_session("/x", 2030))
+            self.assertIsNone(store.load_session(["/x"], 2030))
 
             store.save_settings({"root": "/x"})
             self.assertEqual(store.settings(), {"root": "/x"})
             next(Path(tmp).glob("session-*.json")).write_text("{not json")
-            self.assertIsNone(store.load_session("/x", 2031))
+            self.assertIsNone(store.load_session(["/x"], 2031))
             self.assertEqual(store.sessions(), [])
 
 
@@ -187,6 +187,18 @@ class ScanTest(unittest.TestCase):
         self.assertEqual([c.id for c in result.cameras], ["Alpha 1|0001", "Beta 2|0002"])
         self.assertEqual(len(result.warnings), 1)  # Beta 2: counter moved 6 for 10 files
         self.assertIn("wed", result.warnings[0])
+
+    def test_two_roots_share_one_body(self):
+        # One body's year is split over two selected folders. A folder inside another root is no root.
+        for n in range(1, 6):
+            self.add(f"work/a/IMG{n:04d}.arw", 99 + n)
+            self.add(f"archive/b/IMG{n:04d}.arw", 299 + n)
+        roots = [os.path.join(self.root, *d.split("/")) for d in ("work", "archive", "work/a")]
+        result = scan.scan(roots, 2031, self.et)
+        self.assertEqual((result.root, result.roots), (self.root, roots[:2]))
+        self.assertEqual([f.rel for f in result.folders], ["archive/b", "work/a"])
+        (cam,) = result.cameras
+        self.assertEqual((cam.first.shutter_count, cam.last.shutter_count, cam.actuations), (100, 304, 205))
 
     def test_files_without_counts_are_derivatives_or_estimated(self):
         for n in range(1, 6):
