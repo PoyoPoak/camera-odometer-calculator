@@ -16,7 +16,7 @@ from PySide6.QtGui import (QColor, QImage, QKeyEvent, QLinearGradient, QPainter,
 from PySide6.QtWidgets import QApplication, QPushButton
 
 from ..models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Session, Shot
-from ..store import Store, app_dir
+from ..store import Store
 from . import theme
 
 YEAR = datetime.now().year - 1
@@ -169,7 +169,7 @@ class DemoExifTool:
     def preview(self, path):
         return _painted(path, 1620, 1080)
 
-    def close(self):
+    def close(self, wait: float = 0):
         pass
 
 
@@ -366,6 +366,21 @@ def _selftest(win) -> int:
     _key([b for b in home.findChildren(QPushButton) if b.text() == "Remove"][-1], Qt.Key_Return)
     check(len(home.roots) == 2, "Enter on a focused Remove button removes that folder")
     _settle(win)
+    check(not QApplication.windowIcon().pixmap(32).isNull(), "the window icon loads from assets/icon.ico")
+
+    from .pages import CheckDialog
+    dialog = CheckDialog(win)
+    dialog.load("D:/Photos/Library/folder.ico")
+    check("not a photo" in dialog.note.text() and not win.engine.pending, "a non-photo file is refused unread")
+    dialog.deleteLater()
+
+    bar = win.pages["scanning"].bar
+    win.pages["scanning"].begin(home.roots, YEAR)
+    win.pages["scanning"].on_progress(50, 100, "")
+    half = bar.value()
+    win.pages["scanning"].on_progress(50, 400, "")  # a fallback read added 300 files
+    check(half == bar.value() == 500, "the scan bar does not move backwards when the total grows")
+
     _key(home.path, Qt.Key_Return)
     check(win.page_name == "scanning", "Enter on Home starts the scan")
     _key(win, Qt.Key_Escape)
@@ -486,6 +501,21 @@ def _screenshots(win, out: Path) -> int:
     return count
 
 
+def _real_exiftool(scratch: Path) -> int:
+    """The ExifTool this app would really use must start and read a file. Returns the width it read."""
+    from ..exif import ExifTool
+
+    path = str(scratch / "probe.jpg")
+    image = QImage(8, 6, QImage.Format_RGB32)
+    image.fill(QColor("#808080"))
+    image.save(path)
+    with ExifTool() as et:
+        widths = [row.get("ImageWidth") for row in et._json(["-ImageWidth"], [path]).values()]
+    if widths != [8]:
+        raise AssertionError(f"ExifTool did not read the test image (got {widths})")
+    return widths[0]
+
+
 def run_headless(app, shots_dir: str | None, selftest: bool) -> int:
     """Offscreen only. Any exception in a slot or event handler makes the run fail."""
     import threading
@@ -505,10 +535,12 @@ def run_headless(app, shots_dir: str | None, selftest: bool) -> int:
     runs = [(_selftest, "selftest: {} checks passed")] * selftest
     if shots_dir:
         runs.append((lambda w: _screenshots(w, Path(shots_dir)), f"screenshots: {{}} PNGs in {shots_dir}"))
-    data = app_dir() / "build" / "demo-data"  # dev runs keep their scratch files inside the repo
-    for run, message in runs:  # each on a fresh window and data folder
-        shutil.rmtree(data, ignore_errors=True)
-        win = make_window(data)
+    scratch = Path(tempfile.mkdtemp(prefix="camera-odometer-"))  # nothing is left next to the app
+    if selftest and getattr(sys, "frozen", False):  # the demo ExifTool above cannot catch a broken bundle
+        runs.append((lambda _win: _real_exiftool(scratch),
+                     "selftest: the bundled ExifTool read a test image {} pixels wide"))
+    for i, (run, message) in enumerate(runs):  # each on a fresh window and data folder
+        win = make_window(scratch / f"data-{i}")
         win.show()
         try:
             print(message.format(run(win)))
@@ -517,7 +549,7 @@ def run_headless(app, shots_dir: str | None, selftest: bool) -> int:
             traceback.print_exc()
             failures.append(exc)
         win.close()
-    shutil.rmtree(data, ignore_errors=True)
+    shutil.rmtree(scratch, ignore_errors=True)
     watchdog.cancel()
     if failures:
         print(f"FAILED: {len(failures)} error(s)")

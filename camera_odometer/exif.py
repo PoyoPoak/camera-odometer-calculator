@@ -8,10 +8,12 @@ import shutil
 import subprocess
 import sys
 import threading
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
 from .models import Shot
+from .store import data_dir
 
 _READ_TAGS = ["-Make", "-Model", "-SerialNumber", "-InternalSerialNumber",
               "-DateTimeOriginal", "-ShutterCount", "-ImageCount"]
@@ -21,9 +23,8 @@ _ROTATION = {3: 180, 6: 90, 8: 270}  # EXIF Orientation -> degrees clockwise
 def find_exiftool() -> list[str]:
     """argv prefix for ExifTool: frozen bundle, then vendor/, then PATH."""
     if getattr(sys, "frozen", False):
-        bundled = Path(sys._MEIPASS) / "exiftool" / "exiftool.exe"
-        if bundled.exists():
-            return [str(bundled)]
+        for archive in Path(sys._MEIPASS).glob("exiftool-*.zip"):
+            return [str(_unpack(archive, data_dir()))]
     vendor = Path(__file__).resolve().parent.parent / "vendor"
     if os.name == "nt" and (vendor / "exiftool-win" / "exiftool.exe").exists():
         return [str(vendor / "exiftool-win" / "exiftool.exe")]
@@ -33,6 +34,21 @@ def find_exiftool() -> list[str]:
     if on_path:
         return [on_path]
     raise FileNotFoundError("ExifTool not found (bundle, vendor/ or PATH)")
+
+
+def _unpack(archive: Path, into: Path) -> Path:
+    """Unpack the bundled exiftool-<version>.zip once into `into`/exiftool-<version>/; its exe."""
+    target = into / archive.stem
+    exe = target / "exiftool.exe"
+    if not exe.exists():
+        # ponytail: two app instances started at the same moment race here; add a lock file if that happens
+        for old in into.glob("exiftool-*"):  # other versions, or an unpack that was interrupted
+            shutil.rmtree(old, ignore_errors=True)
+        tmp = into / f"{archive.stem}.tmp"
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(tmp)
+        tmp.rename(target)
+    return exe
 
 
 class ExifTool:
@@ -64,8 +80,13 @@ class ExifTool:
                 return image
         return None
 
-    def close(self) -> None:
-        with self._lock:
+    def close(self, wait: float = 5) -> None:
+        """Let the process exit. One still busy with a call after `wait` seconds is killed,
+        which makes that call raise instead of blocking its thread for ever."""
+        if not self._lock.acquire(timeout=wait):
+            self._proc.kill()
+            return
+        try:
             if self._proc.poll() is None:
                 try:
                     self._proc.stdin.write(b"-stay_open\nFalse\n")
@@ -73,6 +94,8 @@ class ExifTool:
                     self._proc.wait(timeout=5)
                 except (OSError, subprocess.TimeoutExpired):
                     self._proc.kill()
+        finally:
+            self._lock.release()
 
     def __enter__(self) -> ExifTool:
         return self

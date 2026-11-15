@@ -16,8 +16,8 @@ def friendly(exc: BaseException) -> str:
     """Plain-language message for anything a worker can raise."""
     text = str(exc)
     if "exiftool" in text.lower() or "exiftool" in type(exc).__name__.lower():
-        return ("ExifTool, the helper that reads photo metadata, could not be started. "
-                "Make sure the exiftool folder is still next to the app, or reinstall it.")
+        return ("ExifTool, the helper that reads photo metadata, could not be started. Close the app, "
+                "delete the hidden .data folder next to it, and start it again.")
     if isinstance(exc, FileNotFoundError):
         which = f"The folder “{exc.filename}”" if exc.filename else "That folder"
         return f"{which} could not be found. Check that the drive is connected and try again."
@@ -94,6 +94,8 @@ class Engine(QObject):
     def et(self):
         """The shared ExifTool, started on first use. Call from worker threads only."""
         with self._et_lock:
+            if self._closed:
+                raise RuntimeError("the app is closing")
             if self._et is None:
                 if self._make_exiftool:
                     self._et = self._make_exiftool()
@@ -144,7 +146,10 @@ class Engine(QObject):
         self.run(work, lambda r: done(*r), lambda _msg: done(path, None))
 
     def close(self) -> None:
-        self._closed = True
-        self._pool.shutdown(wait=True, cancel_futures=True)
+        """ExifTool goes first: a worker stuck in a read is unblocked, so the pool can be joined."""
+        with self._et_lock:
+            self._closed = True
         if self._et is not None:
-            self._et.close()
+            self._et.close(2)
+        # ponytail: a worker stuck in the file system itself (a dead network drive) still blocks here
+        self._pool.shutdown(wait=True, cancel_futures=True)
