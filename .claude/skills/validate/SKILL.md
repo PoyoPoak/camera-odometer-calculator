@@ -54,6 +54,7 @@ The exe has to run from a Windows drive. Use the Windows folder the user has app
 ```
 
 - Pass: `selftest: N checks passed` and `exit 0`. The first run of a new exe takes 10 to 20 s.
+- The run leaves an empty `build/` folder next to the exe (its scratch data); delete it afterwards.
 - `Invalid argument` or `WinError 4551` means Smart App Control blocked the file: see Troubleshooting in `docs/development.md`. It is not a bug in the build.
 - **Limit**: the selftest uses demo data and never starts ExifTool, so it does not prove the bundled ExifTool works. After a change to the ExifTool bundling, ask the user to open the exe and check the shutter count of one real raw file.
 - Startup time only matters when the bundle contents change. The numbers to compare with are in `docs/development.md`.

@@ -47,7 +47,7 @@ Two flags run without opening a window (Qt's `offscreen` platform) and exit by t
 .venv-win/Scripts/python.exe main.py --screenshots build/screens  # one PNG per screen, from the demo library
 ```
 
-- Both use the demo library and a throwaway data folder. They never start ExifTool and never touch `.data/`.
+- Both use the demo library and a scratch data folder, `build/demo-data/`. They never start ExifTool and never touch `.data/`.
 - The `offscreen` platform starts with no fonts. Code that draws text there must load one first (`QFontDatabase.addApplicationFont`), or every glyph is an empty box.
 
 ## Engine tests and scan CLI
