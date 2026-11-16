@@ -102,35 +102,35 @@ A onefile exe unpacks its whole payload to `%TEMP%` on every launch, and Windows
 
 ## Releasing
 
-Work goes on `main`. The `release` branch only moves when a release is due, and every push to it publishes one.
+All work goes on `main`. A release is a `v<version>` tag on a `main` commit; pushing the tag publishes it.
 
 ```mermaid
 gitGraph
     commit id: "feature"
-    commit id: "bump 0.2.0" tag: "v0.2.0"
+    commit id: "bump 1.1.0" tag: "v1.1.0"
     commit id: "fix"
-    commit id: "bump 0.2.1" tag: "v0.2.1"
+    commit id: "bump 1.1.1" tag: "v1.1.1"
     commit id: "next work"
 ```
 
-- `release` is fast-forwarded, never merged with a merge commit, so each tag sits on a `main` commit. Above, `release` points at "bump 0.2.1" and `main` is one commit ahead.
-
-1. On `main`, bump `__version__` in `camera_odometer/__init__.py` and commit.
-2. Fast-forward `release` to `main` and push it:
+1. Bump `__version__` in `camera_odometer/__init__.py`, commit and push `main`.
+2. Tag that commit and push the tag:
 
    ```bash
-   git push origin main:release
+   git tag v1.1.1
+   git push origin v1.1.1
    ```
 
 3. `.github/workflows/release.yml` runs on a Windows runner:
-   - stops at once if the release `v<version>` already exists (forgot step 1)
+   - stops at once if the tag is not `v` + `__version__`, or its release already exists
    - installs `requirements.txt` and runs the engine tests
    - builds with `scripts/build.py`, then runs the exe with `--selftest`, which also proves the bundled ExifTool
-   - uploads the exe as a workflow artifact and publishes a GitHub Release tagged `v<version>` with generated notes
+   - uploads the exe as a workflow artifact and publishes a GitHub Release for the tag with generated notes
 4. The README's download link points at the latest release.
 
-- **Re-run** a failed release from the Actions tab, or with `gh workflow run release.yml --ref release`.
-- Never commit to `release` directly: the push in step 2 is refused if `release` holds a commit `main` does not.
+- **Re-run** a failed release from the Actions tab, or with `gh workflow run release.yml --ref v1.1.1`.
+- **Wrong tag** (it does not match `__version__`): delete it with `git push origin :refs/tags/v1.1.1` and `git tag -d v1.1.1`, fix, tag again.
+- **Publish a tag again**: `gh release delete v1.1.1 --yes`, then re-run the workflow for the tag.
 
 ## The `.data` folder
 

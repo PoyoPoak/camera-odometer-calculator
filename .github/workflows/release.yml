@@ -1,12 +1,11 @@
-# Builds CameraOdometer.exe and publishes it as a GitHub Release whenever the
-# `release` branch moves. The tag is v<__version__> from camera_odometer/__init__.py,
-# so bump the version on main before merging it into `release`.
+# Builds CameraOdometer.exe and publishes it as a GitHub Release when a v* tag is
+# pushed. The tag must equal v<__version__> from camera_odometer/__init__.py.
 name: Release
 
 on:
   push:
-    branches: [release]
-  workflow_dispatch:
+    tags: ["v*"]
+  workflow_dispatch:  # re-run for an existing tag: gh workflow run release.yml --ref v1.0.1
 
 permissions:
   contents: write
@@ -34,9 +33,13 @@ jobs:
       - name: Version and tag
         run: |
           version=$(python -c "import camera_odometer; print(camera_odometer.__version__)")
-          tag="v$version"
+          tag="$GITHUB_REF_NAME"
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::Tag $tag does not match __version__ $version. Run this for a tag v$version."
+            exit 1
+          fi
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "::error::Release $tag already exists. Bump __version__ in camera_odometer/__init__.py on main, then merge into release again."
+            echo "::error::Release $tag already exists. Delete it first to publish it again."
             exit 1
           fi
           echo "TAG=$tag" >> "$GITHUB_ENV"
@@ -60,4 +63,4 @@ jobs:
           if-no-files-found: error
 
       - name: Publish release
-        run: gh release create "$TAG" dist/CameraOdometer.exe --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+        run: gh release create "$TAG" dist/CameraOdometer.exe --verify-tag --title "$TAG" --generate-notes
