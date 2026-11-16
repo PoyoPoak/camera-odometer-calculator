@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
         self.reached = 0
         self._cancel = threading.Event()
 
-        self.setWindowTitle("Camera Business Use")
+        self.setWindowTitle("Camera Odometer")
         self.setMinimumSize(1100, 700)
         self.resize(1280, 800)
 
@@ -293,7 +293,7 @@ class MainWindow(QMainWindow):
         return bool(self.unsaved and self.session and self.session.labels)
 
     def close_prompt(self, question: str = "Close anyway?", action: str = "Close") -> QMessageBox:
-        box = QMessageBox(QMessageBox.Warning, "Camera Business Use", f"Labels are not saved. {question}",
+        box = QMessageBox(QMessageBox.Warning, "Camera Odometer", f"Labels are not saved. {question}",
                           QMessageBox.Cancel, self)
         box.setInformativeText("To keep a record, choose Cancel and export the CSV on the Results page.")
         box.addButton(action, QMessageBox.AcceptRole)
@@ -328,7 +328,7 @@ def is_enter(event) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="camera-business-use", description="Camera Business Use Calculator")
+    ap = argparse.ArgumentParser(prog="camera-odometer", description="Camera Odometer Calculator")
     ap.add_argument("--demo", action="store_true", help="open with an invented photo library")
     ap.add_argument("--screenshots", metavar="DIR", help="dev: save a PNG of every screen and exit")
     ap.add_argument("--selftest", action="store_true", help="dev: check keyboard handling and exit")
@@ -338,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["QT_QPA_PLATFORM"] = "offscreen"  # never opens a window on the desktop
 
     app = QApplication(sys.argv[:1])
-    app.setApplicationName("Camera Business Use")
+    app.setApplicationName("Camera Odometer")
     theme.apply(app)
     if headless:
         from . import demo
@@ -350,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             window = MainWindow(Store(), Engine())
     except OSError as exc:
-        QMessageBox.critical(None, "Camera Business Use", "The app could not create its data folder next to "
+        QMessageBox.critical(None, "Camera Odometer", "The app could not create its data folder next to "
                              f"the program ({exc.strerror or exc}). Move the app to a folder you can write to.")
         return 1
 

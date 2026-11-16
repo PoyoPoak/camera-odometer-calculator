@@ -373,7 +373,7 @@ if __name__ == "__main__":
                 f"{first.taken:%Y-%m-%d}..{last.taken:%Y-%m-%d}")
 
     if len(sys.argv) < 3:
-        sys.exit("usage: python3 -m camera_business_use.scan YEAR FOLDER [FOLDER ...]")
+        sys.exit("usage: python3 -m camera_odometer.scan YEAR FOLDER [FOLDER ...]")
     _year, _roots = int(sys.argv[1]), sys.argv[2:]
     _store = Store()
     _cache = _store.load_cache()

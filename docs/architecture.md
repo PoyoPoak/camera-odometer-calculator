@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TD
-    UI[camera_business_use.ui  PySide6] --> SCAN[scan.py]
+    UI[camera_odometer.ui  PySide6] --> SCAN[scan.py]
     UI --> CALC[calc.py]
     UI --> STORE[store.py]
     UI --> EXIF[exif.py]
@@ -14,7 +14,7 @@ flowchart TD
 ```
 
 - **Engine** (`exif`, `scan`, `calc`, `store`) uses only the standard library and never imports Qt. It runs and is tested on Linux and Windows.
-- **UI** (`camera_business_use/ui/`) is PySide6. It calls the engine from worker threads and never parses metadata itself.
+- **UI** (`camera_odometer/ui/`) is PySide6. It calls the engine from worker threads and never parses metadata itself.
 - **`models.py`** is the contract between the two. Change it deliberately.
 - **Nothing about a scan is saved.** The scan result, the labels and the excluded bodies (`models.Session`) live in the window's memory; the CSV export is the record. Only the last-used settings and the probe cache are written to disk.
 

@@ -1,10 +1,10 @@
 # User guide
 
-Camera Business Use Calculator works out what share of your camera use in a tax year was for business. It reads the shutter count a camera body writes into every photo, the way you would read a car's odometer in January and again in December.
+Camera Odometer works out what share of your camera use in a tax year was for business. It reads the shutter count a camera body writes into every photo, the way you would read a car's odometer in January and again in December.
 
 ## Get started
 
-- Download `CameraBusinessUse.exe` from the project's [latest release](https://github.com/PoyoPoak/camera-business-use-calculator/releases/latest).
+- Download `CameraOdometer.exe` from the project's [latest release](https://github.com/PoyoPoak/camera-odometer-calculator/releases/latest).
 - Put it in a folder of its own that you can write to (not `Program Files`). No installation.
 - **The first launch takes 10 to 20 seconds** because Windows scans the new program. Later launches take about 2 seconds.
 - The app only reads your photos. It never changes, moves or deletes them.
@@ -89,7 +89,7 @@ The exact rules are in [calculation.md](calculation.md).
 
 ## Where your data is kept
 
-- The app keeps very little: the photo folders and year you used last, a scan cache that makes the next scan fast, and its own copy of ExifTool. They sit in a hidden folder named **`.data`** next to `CameraBusinessUse.exe`.
+- The app keeps very little: the photo folders and year you used last, a scan cache that makes the next scan fast, and its own copy of ExifTool. They sit in a hidden folder named **`.data`** next to `CameraOdometer.exe`.
 - **Your labels and results are not kept.** The exported CSV is the only record.
 - Nothing is sent anywhere and nothing is written into your photo folders.
 - **To reset the app**, close it and delete `.data` (turn on *Hidden items* in File Explorer to see it). It is recreated on the next start.

@@ -231,7 +231,7 @@ class ResultsPage(QWidget):
 
     def summary_text(self) -> str:
         s, sm = self.win.session, self.summary
-        lines = [f"Camera Business Use: tax year {s.scan.year}",
+        lines = [f"Camera Odometer: tax year {s.scan.year}",
                  *(f"Photo folder: {os.path.normpath(r)}" for r in s.scan.roots),
                  f"Business use: {sm.business_pct:.1f}%",
                  f"Year total: {num(sm.year_total)} actuations",
@@ -255,7 +255,7 @@ class ResultsPage(QWidget):
 
     def export_csv(self):
         s = self.win.session
-        path, _ = QFileDialog.getSaveFileName(self, "Export CSV", f"camera-business-use-{s.scan.year}.csv",
+        path, _ = QFileDialog.getSaveFileName(self, "Export CSV", f"camera-odometer-{s.scan.year}.csv",
                                               "CSV files (*.csv)")
         if not path:
             return

@@ -1,4 +1,4 @@
-# Camera Business Use Calculator
+# Camera Odometer Calculator
 
 Windows desktop app that works out what share of your camera use in a tax year was for business, from the shutter counts in your photos.
 
@@ -31,7 +31,7 @@ If your camera gear does paid work and personal shooting, your tax records may n
 
 ## Download
 
-1. Get `CameraBusinessUse.exe` from the [latest release](https://github.com/PoyoPoak/camera-business-use-calculator/releases/latest). One file, Windows 10 / 11, 64-bit, no installer.
+1. Get `CameraOdometer.exe` from the [latest release](https://github.com/PoyoPoak/camera-odometer-calculator/releases/latest). One file, Windows 10 / 11, 64-bit, no installer.
 2. Put it in a folder of its own that you can write to (not `Program Files`) and start it. It keeps a little state in a hidden `.data` folder next to itself.
 3. The first start takes 10 to 20 seconds while Windows scans the new file.
 
@@ -57,7 +57,7 @@ chmod +x .venv-win/Scripts/*.exe        # WSL only
 ```
 
 - The build downloads the pinned ExifTool once and checks its hash.
-- The result is `dist/CameraBusinessUse.exe`.
+- The result is `dist/CameraOdometer.exe`.
 - Run from source, tests and troubleshooting: [development guide](docs/development.md).
 
 ## Documentation

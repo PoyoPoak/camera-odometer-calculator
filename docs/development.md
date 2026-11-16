@@ -56,7 +56,7 @@ Two flags run without opening a window (Qt's `offscreen` platform) and exit by t
 
 ```bash
 python3 -m unittest discover -s tests
-python3 -m camera_business_use.scan 2025 "/mnt/d/Photos" "/mnt/e/Archive"
+python3 -m camera_odometer.scan 2025 "/mnt/d/Photos" "/mnt/e/Archive"
 ```
 
 - The tests need neither Qt nor ExifTool.
@@ -66,21 +66,21 @@ python3 -m camera_business_use.scan 2025 "/mnt/d/Photos" "/mnt/e/Archive"
 ## Build the exe
 
 ```bash
-.venv-win/Scripts/python.exe scripts/build.py --deploy 'D:\Apps\CameraBusinessUse'
+.venv-win/Scripts/python.exe scripts/build.py --deploy 'D:\Apps\CameraOdometer'
 ```
 
 ```mermaid
 flowchart LR
     F[fetch_exiftool.py] --> V[vendor/exiftool-win]
     V -->|zip| Z[exiftool-VERSION.zip]
-    M[main.py + camera_business_use] --> P[PyInstaller onefile]
+    M[main.py + camera_odometer] --> P[PyInstaller onefile]
     Z --> P
     I[assets/icon.ico] --> P
-    P --> D[dist/CameraBusinessUse.exe]
-    D -->|--deploy DIR| W[DIR/CameraBusinessUse.exe]
+    P --> D[dist/CameraOdometer.exe]
+    D -->|--deploy DIR| W[DIR/CameraOdometer.exe]
 ```
 
-- Takes about a minute and a half. Output: `dist/CameraBusinessUse.exe`, about 39 MB.
+- Takes about a minute and a half. Output: `dist/CameraOdometer.exe`, about 39 MB.
 - **`--deploy DIR`** also copies the exe to a folder on a Windows drive. Run it from there: from the `\\wsl.localhost` path a start takes over 30 s.
 - **`--entry FILE`** freezes another script instead of `main.py` (used for startup experiments).
 - The PyInstaller spec is generated into `build/pyinstaller/` on every build. Change `scripts/build.py`, not the spec.
@@ -113,7 +113,7 @@ gitGraph
     commit id: "next work"
 ```
 
-1. Bump `__version__` in `camera_business_use/__init__.py`, commit and push `main`.
+1. Bump `__version__` in `camera_odometer/__init__.py`, commit and push `main`.
 2. Tag that commit and push the tag:
 
    ```bash
@@ -134,7 +134,7 @@ gitGraph
 
 ## The `.data` folder
 
-- From source: `<repo>/.data/` (git-ignored). Frozen: next to `CameraBusinessUse.exe`. Hidden on Windows.
+- From source: `<repo>/.data/` (git-ignored). Frozen: next to `CameraOdometer.exe`. Hidden on Windows.
 - Holds `settings.json` and `cache.json`, and in the frozen app `exiftool-<version>/`.
 - Safe to delete. The remembered folders are forgotten, the next scan is a cold one, and ExifTool is unpacked again on the next start.
 
