@@ -1,5 +1,5 @@
-# Builds CameraOdometer.exe and publishes it as a GitHub Release when a v* tag is
-# pushed. The tag must equal v<__version__> from camera_odometer/__init__.py.
+# Builds CameraBusinessUse.exe and publishes it as a GitHub Release when a v* tag is
+# pushed. The tag must equal v<__version__> from camera_business_use/__init__.py.
 name: Release
 
 on:
@@ -32,7 +32,7 @@ jobs:
 
       - name: Version and tag
         run: |
-          version=$(python -c "import camera_odometer; print(camera_odometer.__version__)")
+          version=$(python -c "import camera_business_use; print(camera_business_use.__version__)")
           tag="$GITHUB_REF_NAME"
           if [ "$tag" != "v$version" ]; then
             echo "::error::Tag $tag does not match __version__ $version. Run this for a tag v$version."
@@ -54,13 +54,13 @@ jobs:
         run: python scripts/build.py
 
       - name: Smoke test the exe
-        run: dist/CameraOdometer.exe --selftest
+        run: dist/CameraBusinessUse.exe --selftest
 
       - uses: actions/upload-artifact@v7
         with:
-          name: CameraOdometer-${{ env.TAG }}
-          path: dist/CameraOdometer.exe
+          name: CameraBusinessUse-${{ env.TAG }}
+          path: dist/CameraBusinessUse.exe
           if-no-files-found: error
 
       - name: Publish release
-        run: gh release create "$TAG" dist/CameraOdometer.exe --verify-tag --title "$TAG" --generate-notes
+        run: gh release create "$TAG" dist/CameraBusinessUse.exe --verify-tag --title "$TAG" --generate-notes

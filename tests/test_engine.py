@@ -5,9 +5,9 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from camera_odometer import calc, exif, scan
-from camera_odometer.models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Shot
-from camera_odometer.store import Store
+from camera_business_use import calc, exif, scan
+from camera_business_use.models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Shot
+from camera_business_use.store import Store
 
 
 def shot(name, count=None, model="Alpha 1", serial="0001", taken=datetime(2031, 6, 1)):

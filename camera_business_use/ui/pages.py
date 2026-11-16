@@ -41,7 +41,7 @@ class HomePage(QWidget):
         self.win = win
         col = _column(self, 680)
         col.addStretch(2)
-        col.addWidget(label("Camera Odometer", "h1"))
+        col.addWidget(label("Camera Business Use", "h1"))
         col.addSpacing(6)
         col.addWidget(label("Find out how much of your camera use was for business.", "dim"))
         col.addSpacing(32)

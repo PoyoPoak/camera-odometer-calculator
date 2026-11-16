@@ -1,4 +1,4 @@
-"""Build dist/CameraOdometer.exe (one file, ExifTool inside). Run with the Windows venv Python:
+"""Build dist/CameraBusinessUse.exe (one file, ExifTool inside). Run with the Windows venv Python:
 
     .venv-win/Scripts/python.exe scripts/build.py [--deploy DIR]
 
@@ -15,7 +15,7 @@ from pathlib import Path
 import fetch_exiftool
 
 ROOT = Path(__file__).resolve().parent.parent
-NAME = "CameraOdometer"
+NAME = "CameraBusinessUse"
 ICON = ROOT / "assets" / "icon.ico"
 WORK = ROOT / "build" / "pyinstaller"
 

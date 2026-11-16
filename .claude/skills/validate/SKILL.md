@@ -1,6 +1,6 @@
 ---
 name: validate
-description: Test and validate changes to Camera Odometer Calculator. Use before reporting a change as done or committing it, to pick and run only the checks that fit what changed (engine, UI, or build).
+description: Test and validate changes to Camera Business Use Calculator. Use before reporting a change as done or committing it, to pick and run only the checks that fit what changed (engine, UI, or build).
 ---
 
 # Validate
@@ -10,7 +10,7 @@ Run the checks for what changed. Do not run everything by reflex: the build take
 | What changed | Run |
 | --- | --- |
 | Engine: `calc.py`, `store.py`, `exif.py`, `scan.py`, `models.py`, `tests/` | 1 |
-| UI: `camera_odometer/ui/`, `main.py` | 2, then 3 for anything visible |
+| UI: `camera_business_use/ui/`, `main.py` | 2, then 3 for anything visible |
 | `models.py` or an engine function the UI calls | 1 and 2 |
 | Build: `scripts/`, `requirements.txt`, `assets/`, or how `exif.py` finds ExifTool | 4 |
 | Docs only | nothing |
@@ -50,7 +50,7 @@ The exe has to run from a Windows drive. Use the Windows folder the user has app
 
 ```bash
 .venv-win/Scripts/python.exe scripts/build.py --deploy '<approved Windows folder>'
-'<same folder as a /mnt/... path>/CameraOdometer.exe' --selftest; echo "exit $?"
+'<same folder as a /mnt/... path>/CameraBusinessUse.exe' --selftest; echo "exit $?"
 ```
 
 - Pass: `selftest: N checks passed`, then `selftest: the bundled ExifTool read a test image 8 pixels wide`, and `exit 0`. The first run of a new exe takes 10 to 20 s.

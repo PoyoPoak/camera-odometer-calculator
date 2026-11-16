@@ -206,7 +206,7 @@ def make_window(data: Path | None = None):
     from .app import MainWindow
     from .workers import Engine
 
-    store = Store(data or Path(tempfile.mkdtemp(prefix="camera-odometer-demo-")))
+    store = Store(data or Path(tempfile.mkdtemp(prefix="camera-business-use-demo-")))
     store.save_settings({"last_roots": [f"{ROOT}/{name}".replace("/", "\\") for name in ROOTS],
                          "last_year": YEAR})
     return MainWindow(store, Engine(DemoExifTool), scan_fn=fake_scan, list_images=list_images)
@@ -517,7 +517,7 @@ def _selftest_pages(win) -> int:
     check(len(rows) == 14 and all(r.height() >= r.sizeHint().height() for r in rows)
           and all(a.geometry().bottom() < b.geometry().top() for a, b in zip(rows, rows[1:])),
           "many photo folders keep each row at full height, none overlapping")
-    title = next(w for w in home.findChildren(QLabel) if w.text() == "Camera Odometer")
+    title = next(w for w in home.findChildren(QLabel) if w.text() == "Camera Business Use")
     last = next(b for b in home.findChildren(QPushButton) if b.text() == "Check Shutter Count")
     check(home.root_scroll.verticalScrollBar().maximum() > 0 and title.mapTo(home, QPoint()).y() >= 24
           and last.mapTo(home, QPoint(0, last.height())).y() <= home.height() - 24,
@@ -946,7 +946,7 @@ def run_headless(app, shots_dir: str | None, selftest: bool) -> int:
     runs = [(_selftest, "selftest: {} checks passed")] * selftest
     if shots_dir:
         runs.append((lambda w: _screenshots(w, Path(shots_dir)), f"screenshots: {{}} PNGs in {shots_dir}"))
-    scratch = Path(tempfile.mkdtemp(prefix="camera-odometer-"))  # nothing is left next to the app
+    scratch = Path(tempfile.mkdtemp(prefix="camera-business-use-"))  # nothing is left next to the app
     if selftest and getattr(sys, "frozen", False):  # the demo ExifTool above cannot catch a broken bundle
         runs.append((lambda _win: _real_exiftool(scratch),
                      "selftest: the bundled ExifTool read a test image {} pixels wide"))
