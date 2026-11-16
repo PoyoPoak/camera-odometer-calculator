@@ -78,6 +78,24 @@ class CalcTest(unittest.TestCase):
         self.assertEqual(s.warnings[0], "scan warning")
         self.assertEqual(len(s.warnings), 2)  # plus the estimated phone
 
+    def test_folder_split_into_runs(self):
+        # A sparse folder split by the scan into per-day runs of one body; the gap between its
+        # runs belongs to the album that covers it, else to nobody.
+        folders = [Folder("album", "/x/album", [rng(3000, 3009, 10)]),
+                   Folder("keepers", "/x/keepers", [rng(1000, 1001, 2), rng(6000, 6002, 2)]),
+                   Folder("touching", "/x/touching", [rng(7000, 7005, 2), rng(7005, 7010, 2)])]
+        scan = ScanResult("/x", 2031, [camera(1000, 7010, 18)], folders)
+        s = calc.summarize(scan, {"keepers": BUSINESS, "album": PERSONAL})
+        rows = {r.rel: r for r in s.rows}
+        self.assertEqual((rows["keepers"].raw, rows["keepers"].attributed), (5, 5))
+        self.assertEqual((rows["album"].raw, rows["album"].attributed), (10, 10))
+        self.assertEqual((rows["touching"].raw, rows["touching"].attributed), (12, 11))
+        self.assertEqual((s.business, s.personal, s.unclassified), (5, 10, 11))
+        self.assertEqual(s.unattributed, 6011 - 26)
+        self.assertEqual(s.business + s.personal + s.unclassified + s.unattributed, s.year_total)
+        self.assertEqual(s.overlaps, [])  # runs of one folder never overlap "with each other"
+        self.assertEqual(calc.to_csv(scan, s).count("keepers,"), 3)  # one row per run, one credit row
+
 
 class StoreTest(unittest.TestCase):
     def test_settings_and_cache_survive_bad_files(self):
@@ -197,6 +215,23 @@ class ScanTest(unittest.TestCase):
         self.assertEqual([c.id for c in result.cameras], ["Alpha 1|0001", "Beta 2|0002"])
         self.assertEqual(len(result.warnings), 1)  # Beta 2: counter moved 6 for 10 files
         self.assertIn("wed", result.warnings[0])
+
+    def test_sparse_folder_is_split_into_days(self):
+        # A catch-all of keepers from two shoots must not claim every count between them.
+        for n in range(10):  # a dense album over two days stays one range
+            self.add(f"album/IMG{3000 + n}.arw", 3000 + n, datetime(2031, 6, 10 + n // 5, 12, n))
+        for count, day in ((1000, 1), (1001, 1), (6000, 20), (6002, 20)):
+            self.add(f"keepers/IMG{count}.arw", count, datetime(2031, 6, day, 12, count % 10))
+        result = scan.scan(self.root, 2031, self.et)
+        album, keepers = result.folders
+        self.assertEqual([(r.first.shutter_count, r.last.shutter_count, r.frames) for r in album.ranges],
+                         [(3000, 3009, 10)])
+        self.assertEqual([(r.camera_id, r.first.shutter_count, r.last.shutter_count, r.frames)
+                          for r in keepers.ranges],
+                         [("Alpha 1|0001", 1000, 1001, 2), ("Alpha 1|0001", 6000, 6002, 2)])
+        (cam,) = result.cameras
+        self.assertEqual((cam.first.shutter_count, cam.last.shutter_count, cam.frames), (1000, 6002, 14))
+        self.assertEqual(result.warnings, [])
 
     def test_two_roots_share_one_body(self):
         # One body's year is split over two selected folders. A folder inside another root is no root.
