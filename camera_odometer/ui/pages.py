@@ -19,7 +19,7 @@ IMAGE_FILTER = f"Photos ({' '.join('*' + ext for ext in sorted(IMAGE_EXTS))})"
 def _column(page: QWidget, width: int) -> QVBoxLayout:
     """A centred column of fixed maximum width inside the page."""
     outer = QHBoxLayout(page)
-    outer.setContentsMargins(40, 0, 40, 0)
+    outer.setContentsMargins(40, 24, 40, 24)
     holder = QWidget()
     holder.setMaximumWidth(width)
     outer.addStretch(1)
@@ -29,6 +29,14 @@ def _column(page: QWidget, width: int) -> QVBoxLayout:
     col.setContentsMargins(0, 0, 0, 0)
     col.setSpacing(0)
     return col
+
+
+class _Check(theme.Check):
+    """A text-less theme.Check: the whole painted 18 px box takes clicks, not only the style's 14 px
+    indicator. ponytail: belongs in theme.Check once another text-less check box appears."""
+
+    def hitButton(self, pos):
+        return self.rect().contains(pos)
 
 
 class HomePage(QWidget):
@@ -45,10 +53,20 @@ class HomePage(QWidget):
         col.addWidget(label("PHOTO FOLDERS", "caps"))
         col.addSpacing(8)
         self.roots: list[str] = []
-        self.root_rows = QVBoxLayout()
+        self.root_list = QWidget()
+        self.root_rows = QVBoxLayout(self.root_list)
+        self.root_rows.setContentsMargins(0, 0, 0, 0)
         self.root_rows.setSpacing(6)
-        col.addLayout(self.root_rows)
-        row = QHBoxLayout()
+        self.root_scroll = QScrollArea()  # grows with its rows up to a cap, then scrolls
+        self.root_scroll.setWidgetResizable(True)
+        self.root_scroll.setWidget(self.root_list)
+        self.root_scroll.setFocusPolicy(Qt.NoFocus)
+        self.root_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._follow = False  # after an add, keep the end of the list (the new folder) in view
+        bar = self.root_scroll.verticalScrollBar()
+        bar.rangeChanged.connect(lambda _, end: self._follow and bar.setValue(end))
+        col.addWidget(self.root_scroll)
+        self.path_row = row = QHBoxLayout()
         row.setSpacing(8)
         self.path = QLineEdit()
         self.path.textEdited.connect(lambda: self.show_error(""))
@@ -60,23 +78,15 @@ class HomePage(QWidget):
         col.addWidget(label("TAX YEAR", "caps"))
         col.addSpacing(8)
         row = QHBoxLayout()
-        row.setSpacing(8)
-        self.year = QSpinBox()
+        self.year = QSpinBox()  # arrow keys and the wheel step it
         self.year.setRange(1990, datetime.now().year)
         self.year.setValue(datetime.now().year - 1)
         self.year.setAlignment(Qt.AlignCenter)
         self.year.setFixedWidth(84)
-        for text, step, at in (("−", self.year.stepDown, 0), ("+", self.year.stepUp, 2)):
-            b = button(text, "stepper", step, focus=False)
-            b.setFixedWidth(38)
-            row.insertWidget(at, b)
-            if at == 0:
-                row.addWidget(self.year)
+        row.addWidget(self.year)
         row.addStretch(1)
         self.scan_button = button("Scan", "primary", self.scan)
         self.scan_button.setMinimumWidth(140)
-        row.addWidget(label("Enter", "faint"))
-        row.addSpacing(6)
         row.addWidget(self.scan_button)
         col.addLayout(row)
 
@@ -87,7 +97,7 @@ class HomePage(QWidget):
         col.addSpacing(20)
 
         row = QHBoxLayout()
-        row.addWidget(button("Check shutter count…", on_click=self.check))
+        row.addWidget(button("Check Shutter Count", on_click=self.check))
         row.addStretch(1)
         col.addLayout(row)
         col.addStretch(3)
@@ -130,7 +140,13 @@ class HomePage(QWidget):
             remove.setAccessibleName(f"Remove {root}")
             row.addWidget(remove)
             self.root_rows.addWidget(w)
-        self.root_rows.setContentsMargins(0, 0, 0, 6 if self.roots else 0)
+        # Measured on a row, not the list: rows added to a visible page stay hidden (size 0) until the
+        # next event loop pass. Four and a half rows at most, so Home still fits 1100x700 with an error
+        # showing; the half row shows that the list scrolls.
+        gap = self.root_rows.spacing()
+        step = w.sizeHint().height() + gap if self.roots else 0
+        self.root_scroll.setFixedHeight(max(round(min(len(self.roots), 4.5) * step) - gap, 0))
+        self.path_row.setContentsMargins(0, 6 if self.roots else 0, 0, 0)
         self.path.setPlaceholderText("Paste another folder path and press Enter" if self.roots else
                                      "Paste the path of a folder that holds your photos, or choose Add folder…")
 
@@ -140,12 +156,14 @@ class HomePage(QWidget):
             path = os.path.normpath(path)
             if os.path.normcase(path) not in map(os.path.normcase, self.roots):
                 self.roots.append(path)
+                self._follow = True
                 self._show_roots()
         self.path.clear()
         self.show_error("")
 
     def remove(self, root: str) -> None:
         self.roots.remove(root)
+        self._follow = False
         self._show_roots()
         self.path.setFocus()
 
@@ -192,15 +210,18 @@ class ScanPage(QWidget):
         col.addSpacing(32)
         row = QHBoxLayout()
         row.addWidget(button("Cancel", on_click=win.cancel_scan))
-        row.addSpacing(8)
-        row.addWidget(label("Esc", "faint"))
+        row.addSpacing(10)
+        row.addWidget(label("Esc", "key", align=Qt.AlignCenter))
         row.addStretch(1)
         col.addLayout(row)
         col.addStretch(5)
 
     def begin(self, roots: list[str], year: int) -> None:
         self.title.setText(f"Scanning for photos taken in {year}")
-        self.root.setText("\n".join(os.path.normpath(r) for r in roots))
+        names = [os.path.normpath(r) for r in roots]
+        if len(names) > 4:  # a long list would push the progress bar off the page
+            names = names[:3] + [f"and {len(names) - 3} more"]
+        self.root.setText("\n".join(names))
         self.bar.setRange(0, 0)  # busy until the first progress report
         self._fraction = 0.0
         self.message.setText("Looking through folders…")
@@ -259,15 +280,17 @@ class CamerasPage(QWidget):
         self.total_note = label("", "caps")
         totals.addWidget(self.total)
         totals.addWidget(self.total_note)
-        row.addLayout(totals)
-        row.addStretch(1)
-        row.addWidget(button("Back", "ghost", win.back))
-        row.addSpacing(8)
-        row.addWidget(label("Enter", "faint"))
-        row.addSpacing(6)
+        # Equal stretch on both sides keeps the legend centred in the bar, not between its neighbours.
+        row.addLayout(totals, 1)
+        row.addWidget(theme.legend(("Enter", "Continue"), ("Esc", "Back")))
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        buttons.addWidget(button("Back", "ghost", win.back))
+        buttons.addSpacing(8)
         self.next = button("Continue", "primary", self.proceed)
         self.next.setMinimumWidth(140)
-        row.addWidget(self.next)
+        buttons.addWidget(self.next)
+        row.addLayout(buttons, 1)
         outer.addWidget(bar)
 
     def enter(self):
@@ -283,7 +306,7 @@ class CamerasPage(QWidget):
                 f"taken in {scan.year}. Check that you picked the right folders and tax year, then scan again.")
         else:
             n = len(scan.cameras)
-            self.title.setText(f"{n} camera{'s' if n != 1 else ''} used in {scan.year}")
+            self.title.setText(f"We found {n} camera{'s' if n != 1 else ''} used in {scan.year}")
             self.subtitle.setText("Each camera's shutter counter works like an odometer: last shot of the year "
                                   "minus first. Untick any camera that should not count, such as a friend's.")
         for text in (self.title, self.subtitle):
@@ -316,15 +339,18 @@ class CamerasPage(QWidget):
     def _card(self, cam) -> QWidget:
         card = theme.frame("card")
         col = QVBoxLayout(card)
-        col.setContentsMargins(22, 20, 22, 18)
+        col.setContentsMargins(22, 20, 22, 20)
         col.setSpacing(0)
         head = QHBoxLayout()
         name = label(theme.camera_name(cam.make, cam.model))
         head.addWidget(name, 1)
-        if cam.estimated:
-            badge = label("Estimated from file count", "badge")
-            badge.setToolTip("This camera does not record a shutter count, so each file counts as one actuation.")
-            head.addWidget(badge)
+        check = _Check()
+        check.setFixedSize(20, 20)  # the painted box is 18 px
+        check.setToolTip("Include in calculation")
+        check.setAccessibleName("Include in calculation")
+        check.setCursor(Qt.PointingHandCursor)
+        check.setChecked(cam.id not in self.win.session.excluded)
+        head.addWidget(check)
         col.addLayout(head)
         col.addSpacing(2)
         col.addWidget(label(f"Serial {cam.serial}" if cam.serial else "No serial number", "faint"))
@@ -343,13 +369,11 @@ class CamerasPage(QWidget):
             ends.addWidget(label(text), 1, c)
         col.addLayout(ends)
         col.addStretch(1)
-        col.addSpacing(18)
-        col.addWidget(theme.frame("line"))
-        col.addSpacing(14)
-        check = theme.Check("Include in calculation")
-        check.setCursor(Qt.PointingHandCursor)
-        check.setMinimumHeight(24)
-        check.setChecked(cam.id not in self.win.session.excluded)
+        if cam.estimated:  # at the foot, not beside the name: there it would stop four cards fitting a row
+            col.addSpacing(18)
+            badge = label("Estimated from file count", "badge")
+            badge.setToolTip("This camera does not record a shutter count, so each file counts as one actuation.")
+            col.addWidget(badge, 0, Qt.AlignLeft)
 
         def shade(on: bool) -> None:  # an excluded camera's card and name are dimmed
             theme.restyle(card, off=not on)
@@ -357,7 +381,6 @@ class CamerasPage(QWidget):
 
         shade(check.isChecked())
         check.toggled.connect(lambda on, cid=cam.id: self._toggle(cid, on, shade))
-        col.addWidget(check)
         return card
 
     def _toggle(self, cam_id: str, on: bool, shade) -> None:
