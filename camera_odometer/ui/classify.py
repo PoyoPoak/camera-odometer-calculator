@@ -1,9 +1,10 @@
-"""Classify page: folder tree, folder card, and the Personal / Business targets."""
+"""Classify page: folder tree, the selected folder's details and previews, and the label buttons."""
 from __future__ import annotations
 
+import math
 import os
 
-from PySide6.QtCore import QEasingCurve, QPointF, QRectF, QSize, Qt, QTimer, QVariantAnimation
+from PySide6.QtCore import QEasingCurve, QPointF, QRectF, QSize, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QSizePolicy, QStyle, QStyledItemDelegate,
                                QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
@@ -11,7 +12,7 @@ from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QSizePolicy, QStyle, QS
 from ..calc import effective_label
 from ..models import BUSINESS, PERSONAL
 from . import theme
-from .app import classified, is_enter
+from .app import classified
 from .theme import LABEL_COLOR, LABEL_TEXT, button, label, num
 
 REL = Qt.UserRole
@@ -19,6 +20,9 @@ INDENT = 18
 ROW_H = 34
 FLASH_MS = 150
 SLIDE_PX = 22
+PANE_MARGINS = (12, 12, 12, 8)  # around the selected folder's pane; the flash slides it sideways
+THUMB_W = (120, 240)  # narrowest and widest a preview may get
+GAP = 8
 
 
 def _depth(item: QTreeWidgetItem) -> int:
@@ -124,7 +128,9 @@ class RowDelegate(QStyledItemDelegate):
 
 
 class ThumbStrip(QWidget):
-    """Up to 8 evenly spaced thumbnails: two rows of four when there is room, else one row."""
+    """Evenly spaced previews that fill the space: as many 3:2 cells as fit, row after row."""
+
+    resized = Signal()
 
     def __init__(self):
         super().__init__()
@@ -132,27 +138,44 @@ class ThumbStrip(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMinimumHeight(64)
 
+    def _grid(self, n: int) -> tuple[int, int, float, float]:
+        """(columns, rows, cell width, cell height) that cover the most of the strip with n photos:
+        a short strip gets more, smaller previews instead of one row and empty space below."""
+        best, best_area = None, -1.0
+        fewest = max(1, math.ceil((self.width() + GAP) / (THUMB_W[1] + GAP)))
+        for cols in range(fewest, max(fewest, int((self.width() + GAP) // (THUMB_W[0] + GAP))) + 1):
+            w = (self.width() - GAP * (cols - 1)) / cols
+            h = min(w * 2 / 3, self.height())
+            w = h * 3 / 2  # a strip shorter than one row narrows the cells, never crops them wider
+            rows = max(1, int((self.height() + GAP) // (h + GAP)))
+            area = min(cols * rows, n) * w * h
+            if area > best_area:
+                best, best_area = (cols, rows, w, h), area
+        return best
+
+    def capacity(self, n: int) -> int:
+        """How many of a folder's n photos the strip shows."""
+        cols, rows, _, _ = self._grid(n)
+        return min(cols * rows, n)
+
     def show_images(self, images, message: str = "") -> None:
         self.images, self.message = list(images), message
         self.update()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.resized.emit()
+
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
-        n, gap = len(self.images), 8
-        if not n:
+        if not self.images:
             p.setPen(QColor(theme.FAINT))
             p.drawText(self.rect(), Qt.AlignCenter, self.message)
             return
-        rows, cols = (2, (n + 1) // 2) if n > 4 else (1, n)
-        cols = max(cols, 4)
-        w = (self.width() - gap * (cols - 1)) / cols
-        if rows == 2 and 2 * (w * 2 / 3) + gap > self.height():
-            rows, cols = 1, n
-            w = (self.width() - gap * (cols - 1)) / cols
-        h = min(w * 2 / 3, (self.height() - gap * (rows - 1)) / rows)
-        for i, img in enumerate(self.images):
-            cell = QRectF((i % cols) * (w + gap), (i // cols) * (h + gap), w, h)
+        cols, rows, w, h = self._grid(len(self.images))
+        for i, img in enumerate(self.images[:cols * rows]):
+            cell = QRectF((i % cols) * (w + GAP), (i // cols) * (h + GAP), w, h)
             path = QPainterPath()
             path.addRoundedRect(cell, 5, 5)
             p.setClipPath(path)
@@ -180,7 +203,7 @@ class ClassifyPage(QWidget):
         self.folders: dict[str, object] = {}  # rel -> Folder, only folders that hold in-year shots
         self.items: dict[str, QTreeWidgetItem] = {}
         self.order: list[str] = []  # every row in tree order, collapsed or not
-        self._picks: dict[str, tuple[list[str], int]] = {}  # rel -> (strip paths, image count)
+        self._photos: dict[str, list[str]] = {}  # rel -> the folder's photos, listed once
         self._flash_rel: str | None = None
 
         outer = QVBoxLayout(self)
@@ -216,39 +239,35 @@ class ClassifyPage(QWidget):
         right.setSpacing(0)
         split.addLayout(right, 7)
 
-        self.banner = theme.frame("banner")
-        row = QHBoxLayout(self.banner)
-        row.setContentsMargins(16, 10, 10, 10)
-        self.banner_text = label("")
-        row.addWidget(self.banner_text, 1)
-        row.addWidget(label("Ctrl+Enter", "faint"))
-        row.addSpacing(6)
-        row.addWidget(button("See results", "primary", lambda: win.go("results"), focus=False))
-        wrap = QVBoxLayout()
-        wrap.setContentsMargins(24, 20, 24, 0)
-        wrap.addWidget(self.banner)
-        right.addLayout(wrap)
-
+        # The selected folder fills the right side. No card: it is the one thing there. The pane
+        # only shows itself while it flashes a label colour.
         self.card_host = QVBoxLayout()
-        self.card_host.setContentsMargins(24, 20, 24, 20)
+        self.card_host.setContentsMargins(*PANE_MARGINS)
         right.addLayout(self.card_host, 1)
-        self.card = theme.frame("card")
+        self.card = theme.frame("pane")
         self.card_host.addWidget(self.card)
         col = QVBoxLayout(self.card)
-        col.setContentsMargins(28, 24, 28, 22)
+        col.setContentsMargins(24, 18, 24, 14)
         col.setSpacing(0)
         self.crumb = label("", "faint")
         self.title = label("", "h1")
         self.title.setMinimumWidth(40)
         self.dates = label("", "dim")
-        self.state = label("")
         col.addWidget(self.crumb)
         col.addWidget(self.title)
         col.addSpacing(4)
         row = QHBoxLayout()
+        row.setSpacing(8)
         row.addWidget(self.dates)
         row.addStretch(1)
-        row.addWidget(self.state)
+        self.inherited = label("Inherited", "faint")
+        row.addWidget(self.inherited)
+        self.toggles = {}
+        for value in (PERSONAL, BUSINESS):
+            b = button(LABEL_TEXT[value], value, lambda value=value: self.mark(value), focus=False)
+            b.setToolTip(f"Mark this folder {LABEL_TEXT[value]} ({'←' if value == PERSONAL else '→'})")
+            self.toggles[value] = b
+            row.addWidget(b)
         col.addLayout(row)
         col.addSpacing(18)
         col.addWidget(theme.frame("line"))
@@ -262,18 +281,26 @@ class ClassifyPage(QWidget):
         self.strip = ThumbStrip()
         col.addWidget(self.strip, 1)
         col.addSpacing(12)
+        self.strip.resized.connect(self._strip_resized)
         self.strip_note = label("", "faint")
         col.addWidget(self.strip_note)
 
         bar = theme.frame("bar")
         row = QHBoxLayout(bar)
-        row.setContentsMargins(24, 14, 24, 14)
-        row.addWidget(button("←   PERSONAL", "personal", lambda: self.mark(PERSONAL), focus=False))
-        hints = label("↑ ↓  move    ·    Enter  gallery    ·    Space  expand    ·    Backspace  clear"
-                      "    ·    Ctrl+Enter  results", "faint", align=Qt.AlignCenter)
-        hints.setMinimumWidth(40)
-        row.addWidget(hints, 1)
-        row.addWidget(button("BUSINESS   →", "business", lambda: self.mark(BUSINESS), focus=False))
+        row.setContentsMargins(40, 16, 24, 16)
+        count = QVBoxLayout()
+        count.setSpacing(0)
+        self.done = label("", "num")
+        count.addWidget(self.done)
+        count.addWidget(label("FOLDERS CLASSIFIED", "caps"))
+        row.addLayout(count)
+        row.addStretch(1)
+        row.addWidget(theme.legend(("←", "Personal"), ("→", "Business"), (("↑", "↓"), "Move"),
+                                   ("Space", "Gallery"), ("Backspace", "Clear"), ("Enter", "Results")))
+        row.addStretch(1)
+        results = button("See Results", "primary", lambda: self.see_results(), focus=False)
+        results.setMinimumWidth(140)
+        row.addWidget(results)
         outer.addWidget(bar)
 
         self.anim = QVariantAnimation(self)
@@ -302,7 +329,7 @@ class ClassifyPage(QWidget):
 
     def _build(self, scan) -> None:
         self._scan = scan
-        self._picks.clear()
+        self._photos.clear()
         self.folders = {f.rel: f for f in scan.folders}
         self.tree.clear()
         root_name = "Photo folders"  # folders on different drives have no common parent
@@ -355,26 +382,19 @@ class ClassifyPage(QWidget):
     def _refresh(self) -> None:
         """Everything that depends on the labels."""
         done, total = classified(self.win.session)
-        self.win.set_status(f"{num(done)} / {num(total)} classified")
-        self.banner.setVisible(bool(total) and done == total)
-        self.banner_text.setText(f"All {num(total)} folders are classified.")
+        self.done.setText(f"{num(done)} / {num(total)}")
         self.tree.viewport().update()
         self._show_state()
 
     def _show_state(self) -> None:
+        """The label buttons: lit for the folder's own label, tinted for an inherited one."""
         rel = self.current
         if rel is None:
             return
         own, eff = self.labels.get(rel), effective_label(rel, self.labels)
-        if eff is None:
-            self.state.setText("Not classified")
-            self.state.setStyleSheet(f"color: {theme.FAINT};")
-        else:
-            text = LABEL_TEXT[eff]
-            if not own:
-                text += " · inherited"
-            self.state.setText(text)
-            self.state.setStyleSheet(f"color: {LABEL_COLOR[eff]}; font-weight: 600;")
+        for value, b in self.toggles.items():
+            theme.restyle(b, on="own" if own == value else "inherited" if not own and eff == value else "")
+        self.inherited.setVisible(bool(eff) and not own)
 
     def _selection_changed(self) -> None:
         rel = self.current
@@ -424,18 +444,33 @@ class ClassifyPage(QWidget):
                                         "dim", wrap=True), 0, 0)
         self._show_state()
         self._show_strip()
-        if rel not in self._picks or any(not self.win.engine.has_thumb(p) for p in self._picks[rel][0]):
-            self._strip_timer.start()
+        self._strip_resized()
 
     # -- thumbnails --
 
+    def _picks(self, rel: str) -> list[str]:
+        """As many of the folder's photos as the strip has room for, evenly spaced through it."""
+        photos = self._photos.get(rel, [])
+        n = self.strip.capacity(len(photos))
+        return [photos[i * (len(photos) - 1) // max(n - 1, 1)] for i in range(n)]
+
+    def _strip_resized(self) -> None:
+        """A new folder or a new strip size: read the previews still missing, once the keys or the
+        resizing pause."""
+        rel = self.current
+        if rel is not None and (rel not in self._photos
+                                or any(not self.win.engine.has_thumb(p) for p in self._picks(rel))):
+            self._strip_timer.start()
+        else:
+            self._show_strip()
+
     def _show_strip(self, error: str | None = None) -> None:
         rel = self.current
-        paths, total = self._picks.get(rel, ([], None))
-        if total is None:
+        if rel not in self._photos:
             self.strip.show_images([], "Loading previews…")
             self.strip_note.setText("")
             return
+        total, paths = len(self._photos[rel]), self._picks(rel)
         images = [self.win.engine.thumb(p) for p in paths]
         if not total:
             self.strip.show_images([], "No photos directly in this folder.")
@@ -443,7 +478,7 @@ class ClassifyPage(QWidget):
             self.strip.show_images([], error or "No previews are available for these files.")
         else:
             self.strip.show_images(images)
-        self.strip_note.setText(f"Enter opens all {num(total)} photos in this folder" if total else "")
+        self.strip_note.setText(f"Space opens all {num(total)} photos in this folder" if total else "")
 
     def _load_strip(self) -> None:
         rel = self.current
@@ -451,24 +486,20 @@ class ClassifyPage(QWidget):
             return
         engine = self.win.engine
 
-        def pick():  # rows that only group other folders have no photos of their own to show
-            images = self.win.list_images(self.folders[rel].path) if rel in self.folders else []
-            n = min(8, len(images))
-            return [images[i * (len(images) - 1) // max(n - 1, 1)] for i in range(n)], len(images)
-
-        def got(result):
-            self._picks[rel] = result
-            engine.load_thumbs(result[0], lambda error=None: rel == self.current and self._show_strip(error))
+        def listed(photos):
+            self._photos[rel] = photos
+            engine.load_thumbs(self._picks(rel), lambda error=None: rel == self.current and self._show_strip(error))
 
         def failed(message):
-            self._picks[rel] = ([], 0)
+            self._photos[rel] = []
             if rel == self.current:
                 self.strip.show_images([], message)
 
-        if rel in self._picks:
-            got(self._picks[rel])
-        else:
-            engine.run(pick, got, failed)
+        if rel in self._photos:
+            listed(self._photos[rel])
+        else:  # rows that only group other folders have no photos of their own to show
+            engine.run(lambda: self.win.list_images(self.folders[rel].path) if rel in self.folders else [],
+                       listed, failed)
 
     # -- actions --
 
@@ -487,14 +518,15 @@ class ClassifyPage(QWidget):
 
     def _slide(self, t: float) -> None:
         d = round(SLIDE_PX * t) * getattr(self, "_direction", 0)
-        self.card_host.setContentsMargins(24 + d, 20, 24 - d, 20)
+        left, top, right, bottom = PANE_MARGINS
+        self.card_host.setContentsMargins(left + d, top, right - d, bottom)
 
     def _flash_done(self) -> None:
         """The flash is over: put the card back and move on to the next unclassified folder."""
         rel, self._flash_rel = self._flash_rel, None
         if rel is None:
             return
-        self.card_host.setContentsMargins(24, 20, 24, 20)
+        self.card_host.setContentsMargins(*PANE_MARGINS)
         theme.restyle(self.card, flash="")
         target = self._next_unclassified(rel)
         if target:
@@ -518,11 +550,6 @@ class ClassifyPage(QWidget):
         if target:
             self.tree.setCurrentItem(target)
 
-    def toggle(self) -> None:
-        item = self.tree.currentItem()
-        if item and item.childCount():
-            item.setExpanded(not item.isExpanded())
-
     def open_gallery(self) -> None:
         rel = self.current
         if rel is not None:
@@ -536,18 +563,18 @@ class ClassifyPage(QWidget):
             self._select(rel)
             self.open_gallery()
 
+    def see_results(self) -> None:
+        self._finish_flash()
+        self.win.go("results")
+
     def handle_key(self, event) -> bool:
-        if is_enter(event, ctrl=True):
-            self._finish_flash()
-            self.win.go("results")
-            return True
         if event.modifiers() & ~Qt.KeypadModifier:
             return False
         key = event.key()
         action = {Qt.Key_Left: lambda: self.mark(PERSONAL), Qt.Key_Right: lambda: self.mark(BUSINESS),
                   Qt.Key_Up: lambda: self.move(-1), Qt.Key_Down: lambda: self.move(1),
-                  Qt.Key_Backspace: self.clear, Qt.Key_Space: self.toggle,
-                  Qt.Key_Return: self.open_gallery, Qt.Key_Enter: self.open_gallery}.get(key)
+                  Qt.Key_Backspace: self.clear, Qt.Key_Space: self.open_gallery,
+                  Qt.Key_Return: self.see_results, Qt.Key_Enter: self.see_results}.get(key)
         if action is None:
             return False
         self._finish_flash()

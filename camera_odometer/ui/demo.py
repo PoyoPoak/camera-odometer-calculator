@@ -248,11 +248,13 @@ def _selftest(win) -> int:
     _key(tree, Qt.Key_Right)
     check(labels.get(first) == BUSINESS, "Right marks Business (focus on the tree)")
     check(page.current == first, "the selection waits for the flash")
+    check(buttons["business"].property("on") == "own" and buttons["personal"].property("on") == "",
+          "the folder's own label lights its Business button")
     _settle(win)
     check(page.current == second, "after the flash the selection jumps to the next unclassified folder")
 
     _key(buttons["personal"], Qt.Key_Left)
-    check(labels.get(second) == PERSONAL, "Left marks Personal (focus on a bottom-bar button)")
+    check(labels.get(second) == PERSONAL, "Left marks Personal (key sent to the Personal button)")
     _settle(win)
     check(page.current == third, "jumped again")
     buttons["business"].click()
@@ -280,20 +282,26 @@ def _selftest(win) -> int:
           "Right labels a collapsed folder instead of expanding it")
     check(child not in labels and effective_label(child, labels) == BUSINESS,
           "sub-folders inherit the parent's label")
+    page._select(child)
+    check(buttons["business"].property("on") == "inherited" and not page.inherited.isHidden(),
+          "an inherited label is shown as inherited")
+    page._select(parent)
     _settle(win)
     check(page.current == "Library/05-17 Aerial Vineyard", "the jump skips folders that inherited a label")
     page.items[parent].setExpanded(True)
 
     page._select(parent)
     _key(tree, Qt.Key_Space)
-    check(not page.items[parent].isExpanded(), "Space collapses")
-    _key(tree, Qt.Key_Space)
-    check(page.items[parent].isExpanded(), "Space expands")
+    _settle(win)
+    check(win.page_name == "gallery" and page.items[parent].isExpanded(),
+          "Space opens the gallery instead of collapsing the folder")
+    _key(win, Qt.Key_Escape)
+    check(win.page_name == "classify" and page.current == parent, "Esc from the gallery lands on the folder")
 
     page._select(first)
-    before = win.status.text()
+    before = page.done.text()
     _key(tree, Qt.Key_Backspace)
-    check(first not in labels and page.current == first and win.status.text() != before,
+    check(first not in labels and page.current == first and page.done.text() != before,
           "Backspace clears the label and stays put")
 
     last = session.scan.folders[-1].rel
@@ -302,14 +310,13 @@ def _selftest(win) -> int:
             labels.setdefault(f.rel, PERSONAL)
     page._refresh()
     page._select(last)
-    check(page.banner.isHidden(), "no banner while folders remain")
     _key(tree, Qt.Key_Left)
     _settle(win)
     check(page.current == first, "the jump wraps around once")
     _key(tree, Qt.Key_Right)
     _settle(win)
-    check(page.current == first and not page.banner.isHidden(), "nothing left: stay put and offer results")
-    check(win.status.text().startswith(f"{len(session.scan.folders)} / "), "counter shows all classified")
+    n = len(session.scan.folders)
+    check(page.current == first and page.done.text() == f"{n} / {n}", "nothing left: stay put, all counted")
 
     check(win.needs_confirm(), "closing with labels that were not exported asks first")
     win.go("results")
@@ -329,15 +336,15 @@ def _selftest(win) -> int:
           "a folder without shots of its own can be classified and passes its label down")
     _settle(win)
 
-    _key(tree, Qt.Key_Return, Qt.ControlModifier)
-    check(win.page_name == "results", "Ctrl+Enter opens Results")
+    _key(tree, Qt.Key_Return)
+    check(win.page_name == "results", "Enter opens Results")
     _key(win.pages["results"].table, Qt.Key_Escape)
     check(win.page_name == "classify", "Esc goes back to Classify")
     page._select(third)
-    _key(tree, Qt.Key_Return)
+    _key(tree, Qt.Key_Space)
     _settle(win)
     gallery = win.pages["gallery"]
-    check(win.page_name == "gallery" and gallery.model.rowCount() > 0, "Enter opens the gallery")
+    check(win.page_name == "gallery" and gallery.model.rowCount() > 0, "Space opens the gallery")
     _key(gallery.grid, Qt.Key_Return)
     check(gallery.stack.currentWidget() is gallery.viewer, "Enter opens the single image")
     _key(gallery.grid, Qt.Key_Right)
@@ -354,8 +361,24 @@ def _selftest(win) -> int:
     _key(back, Qt.Key_Return)
     check(win.page_name == "home", "Enter on a focused button presses that button")
     win.go("cameras")
+    QApplication.sendEvent(win.pages["cameras"].next,
+                           QKeyEvent(QEvent.KeyPress, Qt.Key_Return, Qt.NoModifier, "", True))
+    check(win.page_name == "cameras", "a held (auto-repeated) Enter does nothing")
     _key(win.pages["cameras"].next, Qt.Key_Return)
     check(win.page_name == "classify", "Enter on Cameras continues")
+
+    page._select("Studio/06-21 Garden Wedding")
+    strip, total = page.strip, len(list_images(page.folders[page.current].path))
+    sizes = []
+    for size in ((1280, 800), (1800, 700), (1100, 900)):
+        win.resize(*size)
+        _settle(win)
+        sizes.append(strip.capacity(total))
+        cols, rows, w, h = strip._grid(total)
+        check(len(strip.images) == cols * rows and all(i is not None for i in strip.images)
+              and strip.height() - rows * (h + 8) < h, f"previews fill the space at {size[0]}x{size[1]}")
+    check(len(set(sizes)) == 3, f"the number of previews follows the window size {sizes}")
+    win.resize(1280, 800)
 
     win.go("home")
     home = win.pages["home"]
@@ -476,6 +499,11 @@ def _screenshots(win, out: Path) -> int:
     grab("06-classify")
     classify._select("Studio/06-21 Garden Wedding")
     grab("06b-classify-two-cameras")
+    win.resize(1800, 700)  # wide and short: the previews must still fill the space
+    _settle(win)
+    win.grab().save(str(out / "06d-classify-wide.png"))
+    count += 1
+    win.resize(1280, 800)
     classify._select("Library/Portfolio Selects")
     grab("06c-classify-days")
     classify._select("Library/04-26 Riverside Marathon/Course")
