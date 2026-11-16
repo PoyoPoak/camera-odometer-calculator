@@ -440,7 +440,7 @@ def _selftest_pages(win) -> int:
 
 def _selftest_viewer(win) -> int:
     """Gallery, single-image view and Results. Sets up the state it needs."""
-    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtGui import QEnterEvent, QMouseEvent
 
     checks = 0
 
@@ -502,6 +502,9 @@ def _selftest_viewer(win) -> int:
     mouse(viewer, at(0.1), move)
     QApplication.sendEvent(viewer, QEvent(QEvent.Leave))
     check(viewer.hover == 0 and not viewer.bar(), "leaving the viewer clears the bar")
+    gallery.flip(-1)
+    QApplication.sendEvent(viewer, QEnterEvent(at(0.9), at(0.9), viewer.mapToGlobal(at(0.9))))
+    check(viewer.bar() == 1, "a mouse entering over the right third shows the bar without moving")
     _settle(win)
 
     win.go("results")
