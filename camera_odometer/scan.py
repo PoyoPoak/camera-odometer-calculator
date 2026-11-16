@@ -17,6 +17,8 @@ RAW_EXTS = frozenset(".arw .cr2 .cr3 .nef .nrw .raf .orf .rw2 .pef .dng .srw .x3
 IMAGE_EXTS = RAW_EXTS | {".jpg", ".jpeg", ".heic"}
 
 _CHUNK = 50  # files per exiftool call, so progress can advance
+_SPARSE_GAP = 100  # a folder range is sparse when its span exceeds its frames by at least this many counts
+_SPARSE_RATIO = 3  # ... and is at least this many times its frames (a catch-all of keepers from many shoots)
 
 
 class ScanCancelled(Exception):
@@ -81,7 +83,7 @@ def scan(roots: str | list[str], year: int, et, *,
         for run in found:
             runs[rel, run[0].camera_id].append(run)
 
-    # 5. One CameraRange per (folder, body), one Camera per body.
+    # 5. One CameraRange per (folder, body), split into per-day runs when sparse; one Camera per body.
     folders: dict[str, Folder] = {}
     by_body: dict[str, list[CameraRange]] = defaultdict(list)
     for (rel, camera_id), found in sorted(runs.items()):
@@ -89,17 +91,19 @@ def scan(roots: str | list[str], year: int, et, *,
         if not counted and found[0][0].model in reader.counted_models:
             continue  # derivative
         key = _count if counted else _taken
-        # A raw + JPEG pair shares its file name and is one frame.
-        stems = {os.path.splitext(os.path.basename(p))[0].lower() for r in counted or found for p in r[2]}
         rng = CameraRange(camera_id,
                           min((r[0] for r in counted or found), key=key),
                           max((r[1] for r in counted or found), key=key),
-                          len(stems), estimated=not counted)
-        folders.setdefault(rel, Folder(rel, paths[rel])).ranges.append(rng)
-        by_body[camera_id].append(rng)
-        if counted and rng.actuations < 0.9 * rng.frames:
-            warnings.append(f"{rel or 'Top folder'}: the {rng.first.model} counter moved {rng.actuations:,} "
-                            f"but the folder holds {rng.frames:,} files (electronic shutter?).")
+                          _frames(p for r in counted or found for p in r[2]), estimated=not counted)
+        rngs = [rng]
+        if counted and rng.actuations - rng.frames >= _SPARSE_GAP and rng.actuations >= _SPARSE_RATIO * rng.frames:
+            rngs = _days(reader.read(list(dict.fromkeys(p for r in counted for p in r[2]))), camera_id, year) or rngs
+        for rng in rngs:
+            folders.setdefault(rel, Folder(rel, paths[rel])).ranges.append(rng)
+            by_body[camera_id].append(rng)
+            if counted and rng.actuations < 0.9 * rng.frames:
+                warnings.append(f"{rel or 'Top folder'}: the {rng.first.model} counter moved {rng.actuations:,} "
+                                f"but the folder holds {rng.frames:,} files (electronic shutter?).")
 
     cameras = []
     for camera_id, ranges in sorted(by_body.items()):
@@ -143,6 +147,29 @@ def _count(shot: Shot) -> int:
 
 def _taken(shot: Shot) -> datetime:
     return shot.taken
+
+
+def _frames(paths) -> int:
+    """A raw + JPEG pair shares its file name and is one frame."""
+    return len({os.path.splitext(os.path.basename(p))[0].lower() for p in paths})
+
+
+def _days(shots: list[Shot], camera_id: str, year: int) -> list[CameraRange]:
+    """A sparse folder's shots of one body as one CameraRange per run of shots taken on one day.
+
+    ponytail: keepers of two shoots that fall on the same day stay one run, still spanning the
+    counts between them. Split on a count jump as well if such folders turn up.
+    """
+    shots = sorted((s for s in shots if s.camera_id == camera_id and s.shutter_count is not None
+                    and (s.taken is None or s.taken.year == year)), key=_count)
+    runs: list[list[Shot]] = []
+    day = None
+    for s in shots:
+        if not runs or (s.taken and day and s.taken.date() != day):
+            runs.append([])
+        runs[-1].append(s)
+        day = s.taken.date() if s.taken else day  # a shot with no date stays in the current run
+    return [CameraRange(camera_id, run[0], run[-1], _frames(s.path for s in run)) for run in runs]
 
 
 def _natural(name: str) -> list:
