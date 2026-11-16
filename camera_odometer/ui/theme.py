@@ -259,6 +259,9 @@ def restyle(w, **props) -> None:
 class Check(QCheckBox):
     """Check box painted by hand: a stylesheet check mark would need an image file."""
 
+    def hitButton(self, pos):  # the whole painted box (and text) takes clicks, not only the style's 14 px
+        return self.rect().contains(pos)
+
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)

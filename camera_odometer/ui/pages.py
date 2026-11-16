@@ -35,14 +35,6 @@ def _column(page: QWidget, width: int) -> QVBoxLayout:
     return col
 
 
-class _Check(theme.Check):
-    """A text-less theme.Check: the whole painted 18 px box takes clicks, not only the style's 14 px
-    indicator. ponytail: belongs in theme.Check once another text-less check box appears."""
-
-    def hitButton(self, pos):
-        return self.rect().contains(pos)
-
-
 class HomePage(QWidget):
     def __init__(self, win):
         super().__init__()
@@ -75,7 +67,7 @@ class HomePage(QWidget):
         self.path = QLineEdit()
         self.path.textEdited.connect(lambda: self.show_error(""))
         row.addWidget(self.path, 1)
-        row.addWidget(button("Add folder…", on_click=self.browse))
+        row.addWidget(button("Add Folder", on_click=self.browse))
         col.addLayout(row)
         col.addSpacing(20)
 
@@ -152,7 +144,7 @@ class HomePage(QWidget):
         self.root_scroll.setFixedHeight(max(round(min(len(self.roots), 4.5) * step) - gap, 0))
         self.path_row.setContentsMargins(0, 6 if self.roots else 0, 0, 0)
         self.path.setPlaceholderText("Paste another folder path and press Enter" if self.roots else
-                                     "Paste the path of a folder that holds your photos, or choose Add folder…")
+                                     "Paste the path of a folder that holds your photos, or choose Add Folder")
 
     def add(self, path: str) -> None:
         path = path.strip().strip('"')
@@ -348,7 +340,7 @@ class CamerasPage(QWidget):
         head = QHBoxLayout()
         name = label(theme.camera_name(cam.make, cam.model))
         head.addWidget(name, 1)
-        check = _Check()
+        check = theme.Check()
         check.setFixedSize(20, 20)  # the painted box is 18 px
         check.setToolTip("Include in calculation")
         check.setAccessibleName("Include in calculation")

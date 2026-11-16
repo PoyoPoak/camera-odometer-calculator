@@ -74,9 +74,9 @@ class ResultsPage(QWidget):
         top.addLayout(hero, 1)
         actions = QHBoxLayout()
         actions.setSpacing(8)
-        self.copy_button = button("Copy summary", on_click=self.copy_summary)
+        self.copy_button = button("Copy Summary", on_click=self.copy_summary)
         actions.addWidget(self.copy_button)
-        actions.addWidget(button("Export CSV…", "primary", self.export_csv))
+        actions.addWidget(button("Export CSV", "primary", self.export_csv))
         side = QVBoxLayout()
         side.addLayout(actions)
         side.addSpacing(8)
@@ -251,7 +251,7 @@ class ResultsPage(QWidget):
         QGuiApplication.clipboard().setText(self.summary_text())
         self.win.unsaved = False
         self.copy_button.setText("Copied")
-        QTimer.singleShot(1500, lambda: self.copy_button.setText("Copy summary"))
+        QTimer.singleShot(1500, lambda: self.copy_button.setText("Copy Summary"))
 
     def export_csv(self):
         s = self.win.session
