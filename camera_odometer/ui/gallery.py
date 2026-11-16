@@ -4,8 +4,8 @@ from __future__ import annotations
 import os
 from collections import OrderedDict
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QPoint, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtCore import QAbstractListModel, QModelIndex, QPoint, QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (QHBoxLayout, QListView, QStackedWidget, QStyle, QStyledItemDelegate,
                                QVBoxLayout, QWidget)
 
@@ -85,23 +85,65 @@ class CellDelegate(QStyledItemDelegate):
 
 
 class Viewer(QWidget):
-    """One image, as large as the window allows."""
+    """One image, as large as the window allows. A click on its left or right third flips."""
 
-    def __init__(self):
+    def __init__(self, flip):
         super().__init__()
+        self.flip = flip
         self.image, self.sharp, self.caption = None, False, ""
+        self.can = {-1: False, 0: False, 1: False}  # is there an image that way
+        self.hover = 0  # the third under the mouse: -1 left, 1 right, 0 middle or away
+        self.setMouseTracking(True)
 
-    def show_image(self, image, sharp: bool, caption: str) -> None:
+    def show_image(self, image, sharp: bool, caption: str, back: bool = False, forward: bool = False) -> None:
         self.image, self.sharp, self.caption = image, sharp, caption
+        self.can = {-1: back, 0: False, 1: forward}
+        self._sync()
+
+    def bar(self) -> int:
+        """The side showing a flip bar: the hovered third, when there is an image that way."""
+        return self.hover if self.can[self.hover] else 0
+
+    def _sync(self) -> None:
+        self.setCursor(Qt.PointingHandCursor if self.bar() else Qt.ArrowCursor)
         self.update()
+
+    def _track(self, x: float) -> int:
+        self.hover = -1 if x < self.width() / 3 else 1 if x > self.width() * 2 / 3 else 0
+        self._sync()
+        return self.hover
+
+    def mouseMoveEvent(self, event):
+        self._track(event.position().x())
+
+    def enterEvent(self, event):  # opened under a still mouse: no move event comes
+        self._track(event.position().x())
+
+    def leaveEvent(self, _):
+        self.hover = 0
+        self._sync()
+
+    def mousePressEvent(self, event):  # a double-click arrives here too, so quick clicks all flip
+        if event.button() == Qt.LeftButton and self._track(event.position().x()):
+            self.flip(self.hover)
 
     def paintEvent(self, _):
         p = QPainter(self)
-        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        p.setRenderHints(QPainter.SmoothPixmapTransform | QPainter.Antialiasing)
         p.fillRect(self.rect(), QColor("#0b0b0c"))
         area = QRectF(self.rect()).adjusted(24, 20, -24, -52)
         if self.image is not None:
             p.drawImage(_fit(self.image, area), self.image)
+        side = self.bar()
+        if side:  # a soft glow from that edge with a chevron, fading toward the centre
+            edge, w = (0 if side < 0 else self.width()), 110
+            glow = QLinearGradient(edge, 0, edge - side * w, 0)
+            glow.setColorAt(0, QColor(255, 255, 255, 34))
+            glow.setColorAt(1, QColor(255, 255, 255, 0))
+            p.fillRect(QRectF(min(edge, edge - side * w), 0, w, self.height()), glow)
+            x, y = edge - side * 34, area.center().y()
+            p.setPen(QPen(QColor(theme.TEXT), 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            p.drawPolyline([QPointF(x - side * 7, y - 14), QPointF(x + side * 7, y), QPointF(x - side * 7, y + 14)])
         text = self.caption
         if self.image is None:
             p.setPen(QColor(theme.FAINT))
@@ -162,7 +204,7 @@ class GalleryPage(QWidget):
         self.grid.verticalScrollBar().valueChanged.connect(lambda _: self._lazy.start())
         self.grid.installEventFilter(self)
         self.empty = label("", "dim", align=Qt.AlignCenter, wrap=True)
-        self.viewer = Viewer()
+        self.viewer = Viewer(self.flip)
         self.stack = QStackedWidget()
         grid_wrap = QWidget()
         wrap = QVBoxLayout(grid_wrap)
@@ -279,11 +321,11 @@ class GalleryPage(QWidget):
     def _show_image(self) -> None:
         path = self.model.paths[self.row]
         caption = f"{os.path.basename(path)}   ·   {num(self.row + 1)} of {num(len(self.model.paths))}"
-        if path in self._previews:
-            self.viewer.show_image(self._previews[path], True, caption)
-            return
-        self.viewer.show_image(self.win.engine.thumb(path), False, caption)
-        self._preview_timer.start()
+        sharp = path in self._previews
+        self.viewer.show_image(self._previews[path] if sharp else self.win.engine.thumb(path), sharp, caption,
+                               self.row > 0, self.row < len(self.model.paths) - 1)
+        if not sharp:
+            self._preview_timer.start()
 
     def _load_preview(self) -> None:
         if self.stack.currentWidget() is self.viewer and 0 <= self.row < len(self.model.paths):
