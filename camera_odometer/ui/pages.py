@@ -8,7 +8,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLineEdit,
+from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QLineEdit,
                                QProgressBar, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
                                QWidget)
 
@@ -238,6 +238,23 @@ class ScanPage(QWidget):
         return False  # Esc is handled by the window: it cancels
 
 
+class _CameraCard(QFrame):
+    """A camera card: a left click anywhere on it flips its include box."""
+
+    def __init__(self, check):
+        super().__init__()
+        self.setProperty("role", "card")
+        self.setCursor(Qt.PointingHandCursor)
+        self.check = check
+
+    def mousePressEvent(self, event):  # accept, so the release comes here too
+        event.setAccepted(event.button() == Qt.LeftButton)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.check.toggle()
+
+
 class CamerasPage(QWidget):
     def __init__(self, win):
         super().__init__()
@@ -333,18 +350,17 @@ class CamerasPage(QWidget):
         self._place_cards()
 
     def _card(self, cam) -> QWidget:
-        card = theme.frame("card")
+        check = theme.Check()
+        card = _CameraCard(check)
         col = QVBoxLayout(card)
         col.setContentsMargins(22, 20, 22, 20)
         col.setSpacing(0)
         head = QHBoxLayout()
         name = label(theme.camera_name(cam.make, cam.model))
         head.addWidget(name, 1)
-        check = theme.Check()
         check.setFixedSize(20, 20)  # the painted box is 18 px
         check.setToolTip("Include in calculation")
         check.setAccessibleName("Include in calculation")
-        check.setCursor(Qt.PointingHandCursor)
         check.setChecked(cam.id not in self.win.session.excluded)
         head.addWidget(check)
         col.addLayout(head)

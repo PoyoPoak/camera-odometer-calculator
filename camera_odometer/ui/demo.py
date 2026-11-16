@@ -566,6 +566,13 @@ def _selftest_pages(win) -> int:
     check(cam.id in session.excluded and cameras.total.text() != total, "a click on the box excludes the camera")
     click(box, 9, 10)
     check(cam.id not in session.excluded and cameras.total.text() == total, "a second click includes it again")
+    figure = next(w for w in card.findChildren(QLabel) if w.property("role") == "num")
+    click(figure, 5, 5)
+    check(cam.id in session.excluded and not box.isChecked() and card.property("off"),
+          "a click anywhere on the card, here its big number, excludes the camera")
+    click(card, card.width() // 2, card.height() - 4)
+    check(cam.id not in session.excluded and box.isChecked(), "a click on the card's empty foot includes it again")
+    check(card.cursor().shape() == Qt.PointingHandCursor, "the whole card shows a pointing hand")
     key = next(w for w in cameras.findChildren(QLabel) if w.property("role") == "key" and w.text() == "Enter")
     legend = key.parentWidget()
     footer = legend.parentWidget()

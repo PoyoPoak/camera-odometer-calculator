@@ -23,7 +23,7 @@ Camera Odometer works out what share of your camera use in a tax year was for bu
 ![Cameras](images/cameras.png)
 
 - One card per camera body that took photos in that year, with its first and last shot and the shutter counts between them.
-- **Untick** the box at a card's top right for a camera that should not count, such as a friend's camera or one you only use privately.
+- **Click a card** (or the box at its top right) to untick a camera that should not count, such as a friend's camera or one you only use privately.
 - **Continue** (`Enter`). The keys for each screen are listed at the bottom (or top, in the photo view).
 
 ## 3. Mark each folder Personal or Business

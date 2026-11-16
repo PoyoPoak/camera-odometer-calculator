@@ -54,7 +54,7 @@ Title: "We found 3 cameras used in 2025". One card per camera body found in the 
 | Last shot | Oct 31 · #24,105 |
 | Year actuations | 9,896 |
 
-- A check box at the card's top right, with no text (tooltip "Include in calculation", default on). Untick it to drop a friend's camera or a drone; the card dims.
+- A check box at the card's top right, with no text (tooltip "Include in calculation", default on). A click anywhere on the card flips it, and the card shows a pointing hand. Untick it to drop a friend's camera or a drone; the card dims.
 - Bodies with no shutter count show an **Estimated from file count** badge at the foot of the card (beside the name it would stop four cards fitting a row).
 - Footer: total actuations across included bodies on the left, the key legend (`[Enter] Continue  [Esc] Back`) centred, **Back** and **Continue** on the right.
 
