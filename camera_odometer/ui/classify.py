@@ -391,12 +391,17 @@ class ClassifyPage(QWidget):
             taken = [s.taken for r in folder.ranges for s in (r.first, r.last) if s.taken]
             self.dates.setText(theme.date_range(min(taken), max(taken)) if taken else "No capture dates")
             cams = {c.id: c for c in self._scan.cameras}
-            for i, r in enumerate(folder.ranges):
-                cam = cams.get(r.camera_id)
+            runs: dict[str, list] = {}  # a sparse folder holds several runs (days) of one body
+            for r in folder.ranges:
+                runs.setdefault(r.camera_id, []).append(r)
+            for i, (cid, rs) in enumerate(runs.items()):
+                r, cam = rs[0], cams.get(cid)
                 name = label(theme.camera_name(cam.make, cam.model) if cam else r.first.model)
                 name.setStyleSheet("font-weight: 600;")
                 if r.estimated:
                     span, count = "estimated from file count", f"{num(r.frames)} files"
+                elif len(rs) > 1:
+                    span, count = f"{len(rs)} separate days", f"{num(sum(x.actuations for x in rs))} shots"
                 else:
                     span = f"#{num(r.first.shutter_count)}  →  #{num(r.last.shutter_count)}"
                     count = f"{num(r.actuations)} shots"

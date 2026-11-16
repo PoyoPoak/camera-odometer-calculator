@@ -43,6 +43,9 @@ _FOLDERS = [
     ("Library/07-26 Lighthouse Engagement", [(_A, 21500, 21790, 268, (7, 26), (7, 26))]),
     ("Library/10-31 Costume Party", [(_A, 23700, 24105, 371, (10, 31), (10, 31))]),
     ("Library/11-08 Silent Recital", [(_B, 12110, 12480, 640, (11, 8), (11, 8))]),
+    ("Library/Portfolio Selects", [(_A, 14893, 14895, 3, (1, 27), (1, 27)),  # sparse: one run per day
+                                   (_A, 18260, 18261, 2, (5, 30), (5, 30)),
+                                   (_A, 22450, 22452, 3, (8, 20), (8, 20))]),
     ("Studio/06-21 Garden Wedding", [(_A, 18300, 20950, 2410, (6, 20), (6, 21)),
                                       (_B, 11110, 12100, 905, (6, 21), (6, 21))]),
     ("Studio/09-12 Product Catalog", [(_A, 22600, 23650, 988, (9, 12), (9, 13))]),
@@ -453,6 +456,8 @@ def _screenshots(win, out: Path) -> int:
     grab("06-classify")
     classify._select("Studio/06-21 Garden Wedding")
     grab("06b-classify-two-cameras")
+    classify._select("Library/Portfolio Selects")
+    grab("06c-classify-days")
     classify._select("Library/04-26 Riverside Marathon/Course")
     grab("07-classify-inherited")
     classify._select("Studio")
