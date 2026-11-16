@@ -13,6 +13,7 @@ from . import theme
 from .theme import LABEL_COLOR, LABEL_TEXT, button, label, num
 
 SORT = Qt.UserRole
+REL = Qt.UserRole + 1  # the folder's rel on its row's first cell: rows move when the table is sorted
 
 
 class StackedBar(QWidget):
@@ -119,6 +120,7 @@ class ResultsPage(QWidget):
         self.table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.setSortingEnabled(True)
+        self.table.cellDoubleClicked.connect(lambda row, _col: self.open_row(row))
         split.addWidget(self.table, 1)
 
         panel = theme.frame("card")
@@ -143,10 +145,12 @@ class ResultsPage(QWidget):
 
         foot = QHBoxLayout()
         foot.addWidget(button("←  Back to folders", "ghost", win.back, focus=False))
-        foot.addWidget(label("Esc", "faint"))
+        foot.addWidget(label("Esc", "key", align=Qt.AlignCenter))
         foot.addStretch(1)
         self.note = label("", "faint")
         foot.addWidget(self.note)
+        foot.addSpacing(16)
+        foot.addWidget(button("Start Over", on_click=win.start_over, focus=False))
         col.addLayout(foot)
 
     def enter(self):
@@ -183,6 +187,7 @@ class ResultsPage(QWidget):
         for i, row in enumerate(sm.rows):
             name = SortItem(row.rel.replace("/", "  ›  ") or "(top folder)")
             name.setData(SORT, row.rel.lower())
+            name.setData(REL, row.rel)
             name.setToolTip(row.rel)
             text = LABEL_TEXT[row.label]
             if row.label and row.rel not in s.labels:
@@ -212,6 +217,10 @@ class ResultsPage(QWidget):
             self.warnings.addWidget(label("Nothing to check. No overlapping folders or estimated cameras.",
                                           "dim", wrap=True))
         self.warnings.addStretch(1)
+
+    def open_row(self, row: int) -> None:
+        """Double-click: back to Classify on that folder, with its photos open."""
+        self.win.pages["classify"].open_folder(self.table.item(row, 0).data(REL))
 
     def _overlap_text(self, o) -> str:
         cam = next((c for c in self.win.session.scan.cameras if c.id == o.camera_id), None)
