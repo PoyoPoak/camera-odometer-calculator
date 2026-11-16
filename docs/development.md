@@ -100,6 +100,38 @@ A onefile exe unpacks its whole payload to `%TEMP%` on every launch, and Windows
 - **`assets/icon.ico`** is bundled as a data file too: the window icon is loaded from it at run time.
 - **Dropped Qt files** (`DROP` in `scripts/build.py`): the software OpenGL fallback, Qt's own translations, QtNetwork and the touch-input plugin. Code that starts using `PySide6.QtNetwork` must take it off that list and out of the spec's `excludes`.
 
+## Releasing
+
+Work goes on `main`. The `release` branch only moves when a release is due, and every push to it publishes one.
+
+```mermaid
+gitGraph
+    commit id: "feature"
+    commit id: "bump 0.2.0" tag: "v0.2.0"
+    commit id: "fix"
+    commit id: "bump 0.2.1" tag: "v0.2.1"
+    commit id: "next work"
+```
+
+- `release` is fast-forwarded, never merged with a merge commit, so each tag sits on a `main` commit. Above, `release` points at "bump 0.2.1" and `main` is one commit ahead.
+
+1. On `main`, bump `__version__` in `camera_odometer/__init__.py` and commit.
+2. Fast-forward `release` to `main` and push it:
+
+   ```bash
+   git push origin main:release
+   ```
+
+3. `.github/workflows/release.yml` runs on a Windows runner:
+   - stops at once if the release `v<version>` already exists (forgot step 1)
+   - installs `requirements.txt` and runs the engine tests
+   - builds with `scripts/build.py`, then runs the exe with `--selftest`, which also proves the bundled ExifTool
+   - uploads the exe as a workflow artifact and publishes a GitHub Release tagged `v<version>` with generated notes
+4. The README's download link points at the latest release.
+
+- **Re-run** a failed release from the Actions tab, or with `gh workflow run release.yml --ref release`.
+- Never commit to `release` directly: the push in step 2 is refused if `release` holds a commit `main` does not.
+
 ## The `.data` folder
 
 - From source: `<repo>/.data/` (git-ignored). Frozen: next to `CameraOdometer.exe`. Hidden on Windows.

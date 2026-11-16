@@ -1,0 +1,63 @@
+# Builds CameraOdometer.exe and publishes it as a GitHub Release whenever the
+# `release` branch moves. The tag is v<__version__> from camera_odometer/__init__.py,
+# so bump the version on main before merging it into `release`.
+name: Release
+
+on:
+  push:
+    branches: [release]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash  # Git Bash waits for the windowed exe and passes its exit code on
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Version and tag
+        run: |
+          version=$(python -c "import camera_odometer; print(camera_odometer.__version__)")
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Release $tag already exists. Bump __version__ in camera_odometer/__init__.py on main, then merge into release again."
+            exit 1
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: Install
+        run: python -m pip install -r requirements.txt
+
+      - name: Engine tests
+        run: python -m unittest discover -s tests
+
+      - name: Build
+        run: python scripts/build.py
+
+      - name: Smoke test the exe
+        run: dist/CameraOdometer.exe --selftest
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: CameraOdometer-${{ env.TAG }}
+          path: dist/CameraOdometer.exe
+          if-no-files-found: error
+
+      - name: Publish release
+        run: gh release create "$TAG" dist/CameraOdometer.exe --target "$GITHUB_SHA" --title "$TAG" --generate-notes
