@@ -92,6 +92,7 @@ The exact rules are in [calculation.md](calculation.md).
 
 - **Per camera body.** Each body has its own odometer. A body is told apart by model and serial number.
 - **Deleted photos** between two albums show up as *Unattributed* and count as non-business. That is the cautious reading; a large unattributed share usually means a photo folder is missing from the list.
+- **Folders of keepers.** A folder holding a few photos from many shoots is credited only the days it holds photos from, not every shot in between. Its card shows the summed shots and "N separate days". Keepers from two shoots on the same day still count as one run.
 - **Electronic shutter.** Some bodies do not advance the counter for silent-shutter frames. A warning names the folders where the counter moved less than the number of files.
 - **Two bodies, one file-name prefix, one folder.** The scan notices this only when the first and the last file of the group come from different bodies. Otherwise the folder is credited to one body.
 - **Smart App Control.** The exe is not code-signed, so Windows may refuse to start it. Nothing is wrong with the file; see [development.md](development.md#troubleshooting).

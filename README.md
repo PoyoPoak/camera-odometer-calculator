@@ -12,7 +12,7 @@ Windows desktop app that works out what share of a camera's use was for business
 
 ## Download and run
 
-- Take `CameraOdometer.exe` from a release of this repository, or build it (below). One file, Windows 10 / 11, 64-bit.
+- `CameraOdometer.exe` is produced by `scripts/build.py` (below) and lands in `dist/`. One file, Windows 10 / 11, 64-bit.
 - Put it in a folder of its own that you can write to and start it. It keeps its data in a hidden `.data` folder next to itself and only reads your photos.
 - The first start takes 10 to 20 seconds while Windows scans the new file.
 - The exe is **not code-signed**: Smart App Control or SmartScreen may block it.

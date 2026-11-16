@@ -108,7 +108,8 @@ The scan reads metadata from a few files per folder instead of every photo.
    - ends straddle a year boundary: **bisect** by capture date to find the first / last in-year file;
    - ends in reverse order (the newer file sorts first): the file numbers **rolled over** (`9999` to `0001`). Bisect for the seam and rotate the group back into shooting order, then decide as above;
    - ends disagree (different body, or a probe that fits neither order): **read the whole group** and split it by body.
-5. Merge groups into one `CameraRange` per `(folder, body)`, then one `Camera` per body across folders.
+5. Merge groups into one `CameraRange` per `(folder, body)`. A **sparse** one (span ≥ frames + 100 and ≥ 3 × frames, see [calculation.md](calculation.md#sparse-folders)) is read in full and split into one `CameraRange` per day of shooting, so `Folder.ranges` can hold several entries for one body.
+6. One `Camera` per body across folders: the hull of its ranges.
 
 Files with no shutter count are derivatives (exports, merged DNGs) when the same camera model has counts elsewhere, and are ignored. A model with no counts anywhere becomes an **estimated** body: its actuations are its file count.
 
