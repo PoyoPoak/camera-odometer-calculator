@@ -10,13 +10,14 @@ import traceback
 
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow, QMessageBox, QPushButton,
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QMainWindow, QMenu, QMessageBox, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import calc
 from ..models import Session
 from ..store import Store
 from . import theme
+from .theme import num
 from .workers import Engine
 
 STEPS = ("Folder", "Cameras", "Classify", "Results")
@@ -52,6 +53,19 @@ def classified(session: Session) -> tuple[int, int]:
     """(folders with an effective label, folders) - the one definition every page uses."""
     rels = [f.rel for f in session.scan.folders]
     return sum(calc.effective_label(r, session.labels) is not None for r in rels), len(rels)
+
+
+def root_photos(scan) -> list[tuple[str, int]]:
+    """(photo folder, in-year photos inside it) for each folder that was scanned."""
+    def norm(p):
+        return os.path.normcase(os.path.normpath(p))
+
+    out = []
+    for root in scan.roots:
+        r = norm(root)
+        inside = [f for f in scan.folders if norm(f.path) == r or norm(f.path).startswith(r.rstrip(os.sep) + os.sep)]
+        out.append((os.path.normpath(root), sum(rng.frames for f in inside for rng in f.ranges)))
+    return out
 
 
 class StepButton(QPushButton):
@@ -130,8 +144,13 @@ class MainWindow(QMainWindow):
             row.addWidget(b)
             row.addSpacing(8)
         row.addStretch(1)
-        self.status = theme.label("", "dim")
+        self.status = theme.label("", "dim")  # short messages only, such as a saved CSV
         row.addWidget(self.status)
+        row.addSpacing(12)
+        self.folders_button = theme.button("Included Folders  ▾", "menu", focus=False)
+        self.folders_menu = QMenu(self.folders_button)
+        self.folders_button.setMenu(self.folders_menu)
+        row.addWidget(self.folders_button)
 
         self.stack = QStackedWidget()
         self.pages = {"home": HomePage(self), "scanning": ScanPage(self), "cameras": CamerasPage(self),
@@ -170,7 +189,18 @@ class MainWindow(QMainWindow):
             b.setCursor(Qt.PointingHandCursor if b.state == "done" else Qt.ArrowCursor)
             b.update()
         self.set_status("")
+        self._show_folders(name)
         self.pages[name].enter()
+
+    def _show_folders(self, name: str) -> None:
+        """The step bar's "Included Folders" list: each scanned photo folder and its photos of the year."""
+        shown = self.session is not None and name not in ("home", "scanning")
+        self.folders_button.setVisible(shown)
+        if shown:
+            self.folders_menu.clear()
+            for root, photos in root_photos(self.session.scan):
+                # A tab puts the count in the menu's right-aligned shortcut column.
+                self.folders_menu.addAction(f"{root}\t{num(photos)} photo{'s' if photos != 1 else ''}")
 
     def can_go(self, step: int, current: str | None = None) -> bool:
         if (current or self.page_name) == "scanning":
@@ -216,6 +246,12 @@ class MainWindow(QMainWindow):
         self._cancel.set()
         self.go("home")
 
+    def start_over(self) -> None:
+        """Results: drop the session (labels included) and go back to Home for a new scan."""
+        if self.confirm_discard("Start over anyway?", "Start Over"):
+            self.session, self.reached, self.unsaved = None, 0, False
+            self.go("home")
+
     def _scan_done(self, result, cancel) -> None:
         if cancel.is_set() or result is None:
             return
@@ -241,6 +277,8 @@ class MainWindow(QMainWindow):
         if (event.type() == QEvent.KeyPress and isinstance(obj, QWidget)
                 and (obj is self or self.isAncestorOf(obj))
                 and QApplication.activeModalWidget() is None):
+            if is_enter(event) and event.isAutoRepeat():
+                return True  # a held Enter must not run through Cameras, Classify and Results
             if is_enter(event) and isinstance(obj, QPushButton) and obj.focusPolicy() != Qt.NoFocus:
                 obj.click()  # Enter on a focused button presses that button, not the page's default
                 return True
@@ -254,17 +292,24 @@ class MainWindow(QMainWindow):
     def needs_confirm(self) -> bool:
         return bool(self.unsaved and self.session and self.session.labels)
 
-    def close_prompt(self) -> QMessageBox:
-        box = QMessageBox(QMessageBox.Warning, "Camera Odometer", "Labels are not saved. Close anyway?",
-                          QMessageBox.Close | QMessageBox.Cancel, self)
+    def close_prompt(self, question: str = "Close anyway?", action: str = "Close") -> QMessageBox:
+        box = QMessageBox(QMessageBox.Warning, "Camera Odometer", f"Labels are not saved. {question}",
+                          QMessageBox.Cancel, self)
         box.setInformativeText("To keep a record, choose Cancel and export the CSV on the Results page.")
+        box.addButton(action, QMessageBox.AcceptRole)
         box.setDefaultButton(QMessageBox.Cancel)
         return box
 
+    def confirm_discard(self, question: str, action: str) -> bool:
+        """True when no unexported labels would be lost, or the user agrees to lose them."""
+        if not self.needs_confirm() or QApplication.platformName() == "offscreen":  # headless runs never wait
+            return True
+        box = self.close_prompt(question, action)
+        box.exec()
+        return box.buttonRole(box.clickedButton()) == QMessageBox.AcceptRole
+
     def closeEvent(self, event):
-        # Headless runs (offscreen) must never wait for an answer.
-        if (self.needs_confirm() and QApplication.platformName() != "offscreen"
-                and self.close_prompt().exec() != QMessageBox.Close):
+        if not self.confirm_discard("Close anyway?", "Close"):
             event.ignore()
             return
         self._cancel.set()

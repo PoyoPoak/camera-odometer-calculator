@@ -529,6 +529,13 @@ class ClassifyPage(QWidget):
             path = self.folders[rel].path if rel in self.folders else ""
             self.win.pages["gallery"].open(rel, self.items[rel].text(0), path)
 
+    def open_folder(self, rel: str) -> None:
+        """From Results: Classify on that folder, with its photos open. Esc then lands on the folder."""
+        self.win.go("classify")
+        if rel in self.items:
+            self._select(rel)
+            self.open_gallery()
+
     def handle_key(self, event) -> bool:
         if is_enter(event, ctrl=True):
             self._finish_flash()

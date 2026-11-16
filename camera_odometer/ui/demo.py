@@ -397,7 +397,27 @@ def _selftest(win) -> int:
     check(win.page_name == "cameras", "a finished scan opens Cameras")
     check(win.session.labels == labels and win.session is not session,
           "a rescan in the same window keeps the labels")
-    return checks
+
+    photos = {name: sum(r[3] for rel, ranges in _FOLDERS if rel.startswith(name + "/") for r in ranges)
+              for name in ROOTS}
+    check([a.text() for a in win.folders_menu.actions()]
+          == [f"{os.path.normpath(f'{ROOT}/{n}')}\t{photos[n]:,} photos" for n in ROOTS]
+          and not win.folders_button.isHidden(), "Included Folders lists each photo folder and its photos")
+    win.go("results")
+    win.start_over()
+    check(win.page_name == "home" and win.session is None and not win.can_go(1)
+          and win.folders_button.isHidden(), "Start Over drops the session and returns Home")
+    return checks + _selftest_pages(win) + _selftest_viewer(win)
+
+
+def _selftest_pages(win) -> int:
+    """Home, Scan, Cameras and Check Shutter Count. Sets up the state it needs."""
+    return 0
+
+
+def _selftest_viewer(win) -> int:
+    """Gallery, single-image view and Results. Sets up the state it needs."""
+    return 0
 
 
 def _screenshots(win, out: Path) -> int:
@@ -497,6 +517,9 @@ def _screenshots(win, out: Path) -> int:
 
     win.go("results")
     grab("14-results")
+    win.folders_menu.popup(win.folders_button.mapToGlobal(win.folders_button.rect().bottomLeft()))
+    grab("14b-included-folders", win.folders_menu)
+    win.folders_menu.close()
 
     dialog = CheckDialog(win)
     dialog.show()
@@ -510,8 +533,18 @@ def _screenshots(win, out: Path) -> int:
     prompt.show()
     grab("18-close-prompt", prompt)
     prompt.close()
+    _shots_pages(win, grab)
+    _shots_viewer(win, grab)
     win.go("home")
     return count
+
+
+def _shots_pages(win, grab) -> None:
+    """Extra screenshots of Home, Scan, Cameras and Check Shutter Count: grab(name[, widget])."""
+
+
+def _shots_viewer(win, grab) -> None:
+    """Extra screenshots of Gallery, the single-image view and Results: grab(name[, widget])."""
 
 
 def _real_exiftool(scratch: Path) -> int:

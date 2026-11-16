@@ -1,14 +1,13 @@
 """Palette, stylesheet and the small formatting / painting helpers every page shares."""
 from __future__ import annotations
 
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPalette, QPen
-from PySide6.QtWidgets import QApplication, QCheckBox, QFrame, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QCheckBox, QFrame, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from ..models import BUSINESS, PERSONAL
 
@@ -68,31 +67,47 @@ QPushButton[kind="step"][state="done"] {{ color: {DIM}; }}
 QPushButton[kind="step"][state="done"]:hover {{ color: {TEXT}; }}
 QPushButton[kind="step"][state="current"] {{ color: {TEXT}; }}
 
-QPushButton[kind="personal"], QPushButton[kind="business"] {{ font-size: 16px; font-weight: 700;
-    padding: 0 22px; border-radius: 8px; min-height: 52px; min-width: 170px; }}
-QPushButton[kind="personal"] {{ color: {PERSONAL_BLUE}; border: 1px solid rgba(91, 159, 245, 0.45);
-    background: rgba(91, 159, 245, 0.08); }}
-QPushButton[kind="personal"]:hover {{ background: rgba(91, 159, 245, 0.20); }}
-QPushButton[kind="business"] {{ color: {BUSINESS_AMBER}; border: 1px solid rgba(242, 168, 58, 0.45);
-    background: rgba(242, 168, 58, 0.08); }}
-QPushButton[kind="business"]:hover {{ background: rgba(242, 168, 58, 0.20); }}
+/* Personal / Business toggles: tinted when that label is the folder's own, faint when inherited. */
+QPushButton[kind="personal"], QPushButton[kind="business"] {{ font-weight: 700; padding: 6px 14px;
+    border-radius: 6px; background: transparent; }}
+QPushButton[kind="personal"] {{ color: {PERSONAL_BLUE}; border: 1px solid rgba(91, 159, 245, 0.35); }}
+QPushButton[kind="personal"]:hover {{ background: rgba(91, 159, 245, 0.14); }}
+QPushButton[kind="personal"][on="own"] {{ color: #0f1a2b; background: {PERSONAL_BLUE}; border-color: {PERSONAL_BLUE}; }}
+QPushButton[kind="personal"][on="inherited"] {{ background: rgba(91, 159, 245, 0.16); }}
+QPushButton[kind="business"] {{ color: {BUSINESS_AMBER}; border: 1px solid rgba(242, 168, 58, 0.35); }}
+QPushButton[kind="business"]:hover {{ background: rgba(242, 168, 58, 0.14); }}
+QPushButton[kind="business"][on="own"] {{ color: #2b1d08; background: {BUSINESS_AMBER}; border-color: {BUSINESS_AMBER}; }}
+QPushButton[kind="business"][on="inherited"] {{ background: rgba(242, 168, 58, 0.16); }}
+
+/* "Included Folders" in the step bar: a QPushButton with a QMenu, its stock arrow replaced by text. */
+QPushButton[kind="menu"] {{ background: transparent; color: {DIM}; padding: 6px 12px; }}
+QPushButton[kind="menu"]:hover {{ color: {TEXT}; background: {RAISED}; }}
+QPushButton[kind="menu"]::menu-indicator {{ image: none; width: 0; }}
+QMenu {{ background: {RAISED}; border: 1px solid {BORDER}; border-radius: 8px; padding: 6px; }}
+QMenu::item {{ padding: 8px 16px; border-radius: 5px; }}
+QMenu::item:selected {{ background: {HOVER}; }}
+
+/* A hotkey drawn as a key cap, so a legend never reads as a sentence. */
+QLabel[role="key"] {{ color: {DIM}; background: {RAISED}; border: 1px solid #3a3a41;
+    border-bottom: 2px solid #3a3a41; border-radius: 4px; padding: 0 6px; font-size: 12px;
+    font-weight: 600; min-width: 10px; min-height: 18px; max-height: 18px; }}
 
 QLineEdit, QSpinBox {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 6px;
     padding: 8px 10px; selection-background-color: #35527c; }}
 QLineEdit:focus, QSpinBox:focus {{ border-color: #5c5c64; }}
-/* The stock arrows cannot be themed without image files: hidden, the page adds - / + buttons. */
+/* The stock arrows cannot be themed without image files: hidden. Arrow keys and the wheel still step. */
 QSpinBox {{ padding: 8px 4px; }}
 QSpinBox::up-button, QSpinBox::down-button {{ width: 0; height: 0; border: none; }}
-QPushButton[kind="stepper"] {{ font-size: 18px; padding: 4px 0 7px 0; }}
 
 QFrame[role="card"] {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 10px; }}
 QFrame[role="folder"] {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 6px; }}
-QFrame[role="card"][flash="personal"] {{ border-color: {PERSONAL_BLUE}; background: #1b2434; }}
-QFrame[role="card"][flash="business"] {{ border-color: {BUSINESS_AMBER}; background: #2c2416; }}
 QFrame[role="card"][off="true"] {{ background: {BG}; }}
+/* An open area of the page with no card of its own, that still flashes a label colour. */
+QFrame[role="pane"] {{ background: transparent; border: 1px solid transparent; border-radius: 10px; }}
+QFrame[role="pane"][flash="personal"] {{ border-color: {PERSONAL_BLUE}; background: #1b2434; }}
+QFrame[role="pane"][flash="business"] {{ border-color: {BUSINESS_AMBER}; background: #2c2416; }}
 QFrame[role="bar"] {{ background: {SURFACE}; border: none; border-top: 1px solid {BORDER}; }}
 QFrame[role="stepbar"] {{ background: {SURFACE}; border: none; border-bottom: 1px solid {BORDER}; }}
-QFrame[role="banner"] {{ background: {RAISED}; border: 1px solid {BORDER}; border-radius: 8px; }}
 QFrame[role="line"] {{ background: {BORDER}; border: none; max-height: 1px; min-height: 1px; }}
 QFrame[role="drop"] {{ background: {SURFACE}; border: 1px dashed #4a4a52; border-radius: 10px; }}
 QFrame[role="drop"][active="true"] {{ border-color: {TEXT}; background: {RAISED}; }}
@@ -179,11 +194,6 @@ def camera_name(make: str, model: str) -> str:
     return f"{brand.capitalize() if brand.isupper() and len(brand) > 3 else brand} {model}"
 
 
-def library_name(scan) -> str:
-    """The selected photo folders by name: "Library + Studio"."""
-    return " + ".join(os.path.basename(os.path.normpath(r)) or r for r in scan.roots)
-
-
 # ---- widgets --------------------------------------------------------------
 
 def label(text: str = "", role: str = "", **kw) -> QLabel:
@@ -211,6 +221,24 @@ def button(text: str, kind: str = "", on_click=None, focus: bool = True) -> QPus
     if on_click:
         b.clicked.connect(lambda _=False: on_click())
     return b
+
+
+def legend(*items) -> QWidget:
+    """Hotkey legend: one (keys, action) pair per item, keys a string or a tuple of them.
+    Each key is drawn as a key cap and each action is capitalised: ("Esc", "Back")."""
+    w = QWidget()
+    row = QHBoxLayout(w)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(0)
+    for i, (keys, action) in enumerate(items):
+        if i:
+            row.addSpacing(22)
+        for key in keys if isinstance(keys, tuple) else (keys,):
+            row.addWidget(label(key, "key", align=Qt.AlignCenter))
+            row.addSpacing(3)
+        row.addSpacing(5)
+        row.addWidget(label(action, "faint"))
+    return w
 
 
 def frame(role: str) -> QFrame:

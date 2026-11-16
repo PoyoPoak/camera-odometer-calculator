@@ -276,7 +276,6 @@ class CamerasPage(QWidget):
         for card in self.cards:
             card.deleteLater()
         self.cards = [self._card(cam) for cam in scan.cameras]
-        self.win.set_status(f"{theme.library_name(scan)} · {scan.year}")
         if not scan.cameras:
             self.title.setText(f"No photos from {scan.year} were found")
             self.subtitle.setText(
