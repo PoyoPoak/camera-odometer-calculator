@@ -53,7 +53,7 @@ def summarize(scan: ScanResult, labels: dict[str, str], excluded: Iterable[str] 
         spans = [s for s in spans if s[1] < s[2]]
         for i, (a, alo, ahi) in enumerate(spans):
             for b, blo, bhi in spans[i + 1:]:
-                if min(ahi, bhi) > max(alo, blo):
+                if a != b and min(ahi, bhi) > max(alo, blo):  # a folder's own runs are no overlap
                     overlaps.append(Overlap(cam.id, a, b, min(ahi, bhi) - max(alo, blo)))
 
         # Sweep the segments between endpoints: the narrowest covering range wins each one.
