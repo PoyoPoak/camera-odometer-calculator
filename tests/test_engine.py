@@ -5,7 +5,7 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from camera_odometer import calc, scan
+from camera_odometer import calc, exif, scan
 from camera_odometer.models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Shot
 from camera_odometer.store import Store
 
@@ -116,6 +116,32 @@ class StoreTest(unittest.TestCase):
             blocked = Store(Path(tmp) / "settings.json" / "sub")  # cannot be created: a file is in the way
             blocked.save_cache({"a": 1})  # must not raise
             self.assertEqual(blocked.load_cache(), {})
+
+
+class ExifTest(unittest.TestCase):
+    def test_tags_lists_each_tag_in_file_order(self):
+        # One row of `exiftool -j -G1 -a -l`: every value is {"desc", "val"[, "num"]}.
+        row = {"SourceFile": "C:/x/a.jpg",
+               "ExifTool:ExifToolVersion": {"desc": "ExifTool Version Number", "val": 13.63},
+               "ExifTool:Warning": {"desc": "Warning", "val": "[minor] Bad MakerNotes offset"},
+               "IFD0:Make": {"desc": "Make", "val": "Canon"},
+               "File:ImageWidth": {"desc": "Image Width", "val": 8},
+               "Composite:Aperture": {"desc": "Aperture", "num": 2.8, "val": 2.8},
+               "IPTC:Keywords": {"desc": "Keywords", "val": ["Trip", 2031]},
+               "Photoshop:URL_List": {"desc": "URL List", "val": []},
+               "Canon:ShutterCount": {"val": 1234},
+               "IFD1:ThumbnailImage": {"desc": "Thumbnail Image",
+                                       "val": "(Binary data 28 bytes, use -b option to extract)"}}
+        self.assertEqual(exif._tags(row), [
+            ("IFD0", "Make", "Canon"),
+            ("File", "Image Width", "8"),
+            ("Composite", "Aperture", "2.8"),
+            ("IPTC", "Keywords", "Trip, 2031"),
+            ("Photoshop", "URL List", ""),
+            ("Canon", "ShutterCount", "1234"),  # no description: the tag name stands in
+            ("IFD1", "Thumbnail Image", "(Binary data 28 bytes, use -b option to extract)"),
+        ])
+        self.assertEqual(exif._tags({}), [])  # ExifTool reported nothing: a missing file
 
 
 class FakeExifTool:

@@ -95,6 +95,11 @@ class ExifTool:
                 return image
         return None
 
+    def metadata(self, path: str) -> list[tuple[str, str, str]]:
+        """Every tag of one file as (group, description, value), in file order. Binary data stays a
+        "(Binary data N bytes, ...)" note: never -b here."""
+        return _tags(self._json(["-G1", "-a", "-l"], [path]).get(_key(path), {}))
+
     def close(self, wait: float = 5) -> None:
         """Let the process exit. One still busy with a call after `wait` seconds is killed,
         which makes that call raise instead of blocking its thread for ever."""
@@ -167,6 +172,19 @@ def _shot(path: str, row: dict) -> Shot:
     except (TypeError, ValueError):
         count = None
     return Shot(path, str(row.get("Make", "")), str(row.get("Model", "")), str(serial), taken, count)
+
+
+def _tags(row: dict) -> list[tuple[str, str, str]]:
+    """One `-j -G1 -a -l` row as (group, description, value), without ExifTool's own tags."""
+    out = []
+    for key, item in row.items():
+        group, _, name = key.rpartition(":")
+        if key == "SourceFile" or group == "ExifTool":
+            continue
+        value = item.get("val", "")
+        out.append((group, item.get("desc") or name,
+                    ", ".join(map(str, value)) if isinstance(value, list) else str(value)))
+    return out
 
 
 def _image(row: dict, tag: str) -> tuple[bytes, int] | None:
