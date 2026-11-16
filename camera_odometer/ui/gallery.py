@@ -136,8 +136,12 @@ class GalleryPage(QWidget):
         head.addWidget(self.count)
         head.addWidget(self.state)
         head.addStretch(1)
-        self.hints = label("", "faint")
-        head.addWidget(self.hints)
+        self.grid_keys = theme.legend((("←", "→", "↑", "↓"), "Move"), ("Enter", "Open"), ("P", "Personal"),
+                                      ("B", "Business"), ("Esc", "Back"))
+        self.image_keys = theme.legend((("←", "→"), "Flip"), ("P", "Personal"), ("B", "Business"), ("Esc", "Grid"))
+        self.image_keys.hide()
+        head.addWidget(self.grid_keys)
+        head.addWidget(self.image_keys)
         outer.addLayout(head)
         outer.addWidget(theme.frame("line"))
 
@@ -166,6 +170,7 @@ class GalleryPage(QWidget):
         wrap.addWidget(self.grid)
         for w in (grid_wrap, self.empty, self.viewer):
             self.stack.addWidget(w)
+        self.stack.currentChanged.connect(self._hints)
         outer.addWidget(self.stack, 1)
 
         self._lazy = QTimer(self)
@@ -210,15 +215,13 @@ class GalleryPage(QWidget):
         eff = effective_label(self.rel, self.win.session.labels)
         self.state.setText(LABEL_TEXT[eff])
         self.state.setStyleSheet(f"color: {LABEL_COLOR[eff]}; font-weight: 600;")
-        self._hints()
         self.win.pages["classify"]._refresh()  # keeps the "N / M classified" status visible here too
 
-    def _hints(self) -> None:
-        if self.stack.currentWidget() is self.viewer:
-            self.hints.setText("←  →  flip    ·    P  personal    ·    B  business    ·    Esc  grid")
-        else:
-            self.hints.setText("Arrows  move    ·    Enter  open    ·    P  personal    ·    B  business"
-                               "    ·    Esc  back")
+    def _hints(self, _=0) -> None:
+        """The hotkey legend of whichever view is showing."""
+        viewing = self.stack.currentWidget() is self.viewer
+        self.grid_keys.setVisible(not viewing)
+        self.image_keys.setVisible(viewing)
 
     # -- lazy thumbnails --
 
@@ -271,7 +274,6 @@ class GalleryPage(QWidget):
     def open_image(self) -> None:
         if self.row >= 0:
             self.stack.setCurrentWidget(self.viewer)
-            self._hints()
             self._show_image()
 
     def _show_image(self) -> None:
@@ -307,7 +309,6 @@ class GalleryPage(QWidget):
         """Esc: image -> grid -> Classify."""
         if self.stack.currentWidget() is self.viewer:
             self.stack.setCurrentIndex(0)
-            self._hints()
             self.grid.setFocus()
             self._lazy.start()
         else:
