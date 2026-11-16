@@ -1,12 +1,12 @@
 # Camera Business Use Calculator
 
-Windows desktop app that works out what share of a camera's use in a tax year was for business, from the shutter counts in your photos.
+Windows desktop app that works out what share of your camera use in a tax year was for business, from the shutter counts in your photos.
 
 ![Results screen](docs/images/results.png)
 
 ## Why
 
-If you use one camera for paid work and for yourself, your tax records may need its **business-use percentage**. A car has an odometer for this. A camera has one too: most bodies write their **shutter count** into every photo. This app reads that count, splits the year's shots between your business and personal folders, and gives you the percentage with a CSV to back it up.
+If your camera gear does paid work and personal shooting, your tax records may need its **business-use percentage**. A car has an odometer for this. Cameras have one too: most bodies write their **shutter count** into every photo. This app reads that count, splits the year's shots between your business and personal folders, and gives you the percentage with a CSV to back it up.
 
 ## Features
 

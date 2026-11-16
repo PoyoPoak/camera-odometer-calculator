@@ -1,6 +1,6 @@
 # User guide
 
-Camera Business Use Calculator works out what share of your camera use in a tax year was for business. It reads the shutter count your camera writes into every photo, the way you would read a car's odometer in January and again in December.
+Camera Business Use Calculator works out what share of your camera use in a tax year was for business. It reads the shutter count a camera body writes into every photo, the way you would read a car's odometer in January and again in December.
 
 ## Get started
 
