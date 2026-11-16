@@ -78,3 +78,7 @@ Issues and pull requests are welcome. Before a pull request, run the checks that
 
 - Metadata is read with [ExifTool](https://exiftool.org) by Phil Harvey, bundled unmodified. ExifTool is free software under the same terms as Perl itself (the Perl Artistic License or the GPL); its Windows package carries its own licence files.
 - The interface is built with [Qt for Python](https://doc.qt.io/qtforpython-6/) (PySide6, LGPL).
+
+## License
+
+Copyright © 2026 Peter Luey. Released under the [GNU General Public License v3.0](LICENSE): you may use, change and share it, and anything you distribute that is built from it must be released under the GPL-3.0 too.
