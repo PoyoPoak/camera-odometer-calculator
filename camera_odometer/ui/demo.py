@@ -168,6 +168,29 @@ class DemoExifTool:
             out.append(Shot(p, "SONY", "ILCE-7CM2", "04417358", datetime(YEAR, 6, 21, 16, 42), count))
         return out
 
+    def metadata(self, path):
+        """A plausible tag list; an edited export carries fewer tags and no shutter count."""
+        name = os.path.basename(path)
+        export = "export" in name.lower()
+        rows = [("System", "File Name", name), ("System", "File Size", "2.4 MB" if export else "24 MB"),
+                ("File", "File Type", "JPEG" if export else "ARW"),
+                ("IFD0", "Make", "SONY"), ("IFD0", "Camera Model Name", "ILCE-7CM2"),
+                ("ExifIFD", "Date/Time Original", f"{YEAR}:06:21 16:42:08")]
+        if export:
+            return rows + [("IFD0", "Software", "Adobe Lightroom Classic 14.1 (Windows)"),
+                           ("XMP-dc", "Subject", "harbor, portrait, client"),
+                           ("Composite", "Image Size", "2048x1365")]
+        return rows + [
+            ("IFD0", "Copyright", f"Copyright {YEAR} Harbor Light Studio. All rights reserved. "
+                                  "Licensed to the client for editorial and social media use only."),
+            ("ExifIFD", "Exposure Time", "1/250"), ("ExifIFD", "F Number", "2.8"), ("ExifIFD", "ISO", "400"),
+            ("ExifIFD", "Lens Model", "FE 24-70mm F2.8 GM II"),
+            ("Sony", "Shutter Count", "18342"), ("Sony", "Internal Serial Number", "04417358"),
+            ("Sony", "Release Mode", "Continuous - Hi+"),
+            ("IFD0", "Preview Image", "(Binary data 1089536 bytes, use -b option to extract)"),
+            ("IFD1", "Thumbnail Image", "(Binary data 10871 bytes, use -b option to extract)"),
+            ("Composite", "Image Size", "7008x4672"), ("Composite", "Shutter Speed", "1/250")]
+
     def thumbnails(self, paths):
         return {p: _painted(p, 320, 213) for p in paths}
 

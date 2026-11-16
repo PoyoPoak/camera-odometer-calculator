@@ -1,12 +1,15 @@
-"""Home, Scan and Cameras pages, and the Check Shutter Count dialog."""
+"""Home, Scan and Cameras pages, and the Check Shutter Count and Metadata dialogs."""
 from __future__ import annotations
 
 import os
+import textwrap
 from datetime import datetime
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLineEdit, QProgressBar,
-                               QScrollArea, QSpinBox, QVBoxLayout, QWidget)
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLineEdit,
+                               QProgressBar, QScrollArea, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout,
+                               QWidget)
 
 from ..scan import IMAGE_EXTS
 from . import theme
@@ -426,7 +429,7 @@ class CheckDialog(QDialog):
         col = QVBoxLayout(self)
         col.setContentsMargins(28, 24, 28, 22)
         col.setSpacing(0)
-        col.addWidget(label("Check shutter count", "h2"))
+        col.addWidget(label("Check Shutter Count", "h2"))
         col.addSpacing(4)
         col.addWidget(label("See how many shots a camera had taken when it made one image.", "dim", wrap=True))
         col.addSpacing(18)
@@ -461,7 +464,12 @@ class CheckDialog(QDialog):
         col.addLayout(self.details)
         col.addSpacing(20)
         row = QHBoxLayout()
-        row.addWidget(button("Browse…", "primary", self.browse))
+        row.setSpacing(8)
+        row.addWidget(button("Browse", "primary", self.browse))
+        self.path = ""
+        self.meta_button = button("View Metadata", on_click=self.view_metadata)
+        self.meta_button.setEnabled(False)  # until a photo file is chosen
+        row.addWidget(self.meta_button)
         row.addStretch(1)
         row.addWidget(button("Close", on_click=self.accept))
         col.addLayout(row)
@@ -489,7 +497,10 @@ class CheckDialog(QDialog):
         for v in self.values.values():
             v.setText("—")
         self.values["File"].setText(os.path.basename(path))
-        if os.path.splitext(path)[1].lower() not in IMAGE_EXTS:  # ExifTool reads far more than photos
+        self.path = path
+        photo = os.path.splitext(path)[1].lower() in IMAGE_EXTS  # ExifTool reads far more than photos
+        self.meta_button.setEnabled(photo)
+        if not photo:
             self._show("", "", "This is not a photo file. Choose a raw file or a JPEG straight from the camera.")
             return
         self._show("", "", "Reading…")
@@ -515,6 +526,9 @@ class CheckDialog(QDialog):
             self._show(num(shot.shutter_count), "SHUTTER COUNT", "")
             self.big.setStyleSheet("font-size: 64px;")
 
+    def view_metadata(self):
+        MetadataDialog(self.win, self.path, self).exec()
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() and event.mimeData().urls()[0].isLocalFile():
             event.acceptProposedAction()
@@ -526,3 +540,89 @@ class CheckDialog(QDialog):
     def dropEvent(self, event):
         theme.restyle(self.drop, active=False)
         self.load(event.mimeData().urls()[0].toLocalFile())
+
+
+class MetadataDialog(QDialog):
+    """Every tag ExifTool reads from one photo, in file order, with a filter."""
+
+    def __init__(self, win, path: str, parent=None):
+        super().__init__(parent or win)
+        self.rows: list[tuple[str, str, str]] = []
+        self.setWindowTitle("Metadata")
+        self.setModal(True)
+        self.resize(760, 560)
+        col = QVBoxLayout(self)
+        col.setContentsMargins(28, 24, 28, 22)
+        col.setSpacing(0)
+        name = label(os.path.basename(path), "h2")
+        name.setMinimumWidth(40)
+        col.addWidget(name)
+        col.addSpacing(4)
+        self.count = label("", "dim")
+        col.addWidget(self.count)
+        col.addSpacing(16)
+        self.filter = QLineEdit()
+        self.filter.setPlaceholderText("Filter by group, tag or value")
+        self.filter.textChanged.connect(self._filter)
+        col.addWidget(self.filter)
+        col.addSpacing(12)
+        self.table = table = QTableWidget(0, 3)
+        table.setHorizontalHeaderLabels(["Group", "Tag", "Value"])
+        table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setColumnWidth(0, 120)
+        table.setColumnWidth(1, 230)
+        table.verticalHeader().hide()
+        table.verticalHeader().setDefaultSectionSize(30)
+        table.setShowGrid(False)
+        table.setWordWrap(False)  # long values are elided; the tooltip has them in full
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        col.addWidget(table, 1)
+        self.message = label("", "dim", wrap=True, align=Qt.AlignCenter)
+        col.addWidget(self.message, 1)
+        col.addSpacing(16)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        close = button("Close", on_click=self.accept)
+        close.setAutoDefault(False)  # Enter in the filter must not close the dialog
+        row.addWidget(close)
+        col.addLayout(row)
+        self._message("Reading…")
+        win.engine.run(lambda: win.engine.et().metadata(path), self._loaded, self._message)
+
+    def _message(self, text: str) -> None:
+        """In place of the table: reading, nothing found, or why the file could not be read."""
+        for w in (self.count, self.filter, self.table):
+            w.hide()
+        self.message.setText(text)
+        self.message.show()
+
+    def _loaded(self, rows) -> None:
+        if not rows:
+            self._message("No metadata was found in this file.")
+            return
+        self.rows = rows
+        self.table.setRowCount(len(rows))
+        for r, (group, tag, value) in enumerate(rows):
+            # One line per tag, however long: some files hold whole paragraphs or keyword lists.
+            for c, text in enumerate((group, tag, " ".join(value[:300].split()))):
+                self.table.setItem(r, c, QTableWidgetItem(text))
+            self.table.item(r, 0).setForeground(QColor(theme.DIM))
+            self.table.item(r, 2).setToolTip(textwrap.fill(value[:2000], 100) + "…" * (len(value) > 2000))
+        self.message.hide()
+        for w in (self.count, self.filter, self.table):
+            w.show()
+        self._filter(self.filter.text())
+        self.filter.setFocus()
+
+    def _filter(self, text: str) -> None:
+        text = text.casefold()
+        shown = 0
+        for r, row in enumerate(self.rows):
+            hit = text in " ".join(row).casefold()
+            self.table.setRowHidden(r, not hit)
+            shown += hit
+        total = len(self.rows)
+        self.count.setText(f"{num(total)} tags" if shown == total else f"{num(shown)} of {num(total)} tags")
