@@ -20,11 +20,18 @@ _READ_TAGS = ["-Make", "-Model", "-SerialNumber", "-InternalSerialNumber",
 _ROTATION = {3: 180, 6: 90, 8: 270}  # EXIF Orientation -> degrees clockwise
 
 
+class ExifToolError(RuntimeError):
+    """ExifTool could not be found, unpacked or started, or its process has gone away."""
+
+
 def find_exiftool() -> list[str]:
     """argv prefix for ExifTool: frozen bundle, then vendor/, then PATH."""
     if getattr(sys, "frozen", False):
         for archive in Path(sys._MEIPASS).glob("exiftool-*.zip"):
-            return [str(_unpack(archive, data_dir()))]
+            try:
+                return [str(_unpack(archive, data_dir()))]
+            except (OSError, zipfile.BadZipFile) as exc:
+                raise ExifToolError(f"ExifTool could not be unpacked: {exc}") from exc
     vendor = Path(__file__).resolve().parent.parent / "vendor"
     if os.name == "nt" and (vendor / "exiftool-win" / "exiftool.exe").exists():
         return [str(vendor / "exiftool-win" / "exiftool.exe")]
@@ -33,7 +40,7 @@ def find_exiftool() -> list[str]:
     on_path = shutil.which("exiftool")
     if on_path:
         return [on_path]
-    raise FileNotFoundError("ExifTool not found (bundle, vendor/ or PATH)")
+    raise ExifToolError("ExifTool not found (bundle, vendor/ or PATH)")
 
 
 def _unpack(archive: Path, into: Path) -> Path:
@@ -57,10 +64,18 @@ class ExifTool:
     def __init__(self, command: list[str] | None = None):
         self._lock = threading.Lock()
         self._seq = 0
-        self._proc = subprocess.Popen(
-            [*(command or find_exiftool()), "-stay_open", "True", "-@", "-"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        try:
+            self._proc = subprocess.Popen(
+                [*(command or find_exiftool()), "-stay_open", "True", "-@", "-"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except OSError as exc:
+            raise ExifToolError(f"ExifTool could not be started: {exc}") from exc
+
+    @property
+    def alive(self) -> bool:
+        """False once the process has exited; every call would raise, so make a new ExifTool."""
+        return self._proc.poll() is None
 
     def read(self, paths: list[str]) -> list[Shot]:
         """One Shot per path, in order. A file ExifTool cannot read gives a blank Shot."""
@@ -105,6 +120,8 @@ class ExifTool:
 
     def _json(self, args: list[str], paths: list[str]) -> dict[str, dict]:
         """Run one command over `paths`; rows keyed by normalized SourceFile."""
+        # Paths go to ExifTool as UTF-8 lines: one that cannot be written that way is left unread.
+        paths = [p for p in paths if _utf8(p)]
         if not paths:
             return {}
         out = self._execute(["-j", "-charset", "filename=utf8", *args, *paths])
@@ -115,14 +132,24 @@ class ExifTool:
             self._seq += 1
             ready = f"{{ready{self._seq}}}".encode()
             lines = "".join(f"{a}\n" for a in [*args, f"-execute{self._seq}"])
-            self._proc.stdin.write(lines.encode("utf-8"))
-            self._proc.stdin.flush()
+            try:
+                self._proc.stdin.write(lines.encode("utf-8"))
+                self._proc.stdin.flush()
+            except (OSError, ValueError) as exc:  # the pipe is broken or closed
+                raise ExifToolError("ExifTool is not running") from exc
             out = bytearray()
             for line in iter(self._proc.stdout.readline, b""):
                 if line.strip() == ready:
                     return bytes(out)
                 out += line
-            raise RuntimeError("ExifTool exited unexpectedly")
+            raise ExifToolError("ExifTool exited unexpectedly")
+
+
+def _utf8(path: str) -> bool:
+    try:
+        return "\n" not in path and bool(path.encode("utf-8"))
+    except UnicodeEncodeError:  # a file name with undecodable bytes (POSIX) or a lone surrogate (Windows)
+        return False
 
 
 def _key(path: str) -> str:

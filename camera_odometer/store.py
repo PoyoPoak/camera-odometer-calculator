@@ -111,5 +111,5 @@ def _session(d: dict) -> Session:
         s["root"], s["year"],
         [Camera(**{**c, "first": _shot(c["first"]), "last": _shot(c["last"])}) for c in s["cameras"]],
         [Folder(f["rel"], f["path"], [_range(r) for r in f["ranges"]]) for f in s["folders"]],
-        list(s["warnings"]), list(s["roots"]))
+        list(s["warnings"]), list(s.get("roots") or []))
     return Session(scan, dict(d["labels"]), list(d["excluded"]), _dt(d["saved_at"]))

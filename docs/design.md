@@ -16,22 +16,23 @@ flowchart LR
     Results -->|Back| Classify
 ```
 
-- A persistent **step bar** at the top shows `1 Folder · 2 Cameras · 3 Classify · 4 Results`. Completed steps are clickable.
+- A persistent **step bar** at the top shows `1 Folder · 2 Cameras · 3 Classify · 4 Results`. Every step up to the furthest one reached in this session is clickable, so going back to Cameras does not lock Results.
 - `Esc` always goes back one level. Progress is saved automatically after every change; there is no Save button.
 
 ## Screens
 
 ### 1. Home
 
-- **Photo folder**: path field + Browse button. Remembers the last folder.
-- **Tax year**: spin box, defaults to last calendar year.
-- **Scan** (primary button, `Enter`).
-- **Recent sessions** list: folder, year, saved date, "74% business" if finished. Click to resume without rescanning.
+- **Photo folders**: a short list, one row per folder with a **Remove** button, for libraries split over several folders or drives. **Add folder…** opens the folder picker; a path typed or pasted into the field is added with `Enter`. The list is remembered.
+- **Tax year**: number field with **−** / **+** buttons (the stock spin arrows cannot be themed without image files). Defaults to last calendar year.
+- **Scan** (primary button, `Enter` when the path field is empty).
+- **Recent sessions** list: folder names, year, saved date, "74% business" if finished. Click to resume without rescanning.
 - **Check shutter count** (secondary button): opens the single-image tool.
 
 ### 2. Scan
 
 - Progress bar, current folder name, counts ("412 of 618 files read"). **Cancel** returns to Home.
+- The number of files to read is only known as the scan goes, so the count can grow. The bar never moves backwards.
 - No decisions here. On finish, goes straight to Cameras.
 
 ### 3. Cameras
@@ -68,7 +69,8 @@ One card per camera body found in the year:
 ```
 
 - **Left**: folder tree, fully expanded, only folders that hold in-year shots (plus their ancestors). Each row shows a status dot and a label chip.
-- **Right**: card for the selected folder: date range, per-body shutter range and count, and a strip of up to 8 evenly spaced thumbnails.
+- **Top row**: the library itself. With one photo folder it is that folder; with several it is their common parent and each photo folder is a row below it. These rows can be classified like any other, which labels everything inside in one keystroke.
+- **Right**: card for the selected folder: date range, per-body shutter range and count, and up to 8 evenly spaced thumbnails in two rows of four (one row when the window is too short). A row that only groups other folders shows no thumbnails.
 - **Bottom bar**: two large targets, Personal on the left and Business on the right, so mouse users get the same model as the keyboard.
 
 | Key | Action |
@@ -106,6 +108,7 @@ One card per camera body found in the year:
 
 - Dialog: drop an image or Browse. Shows shutter count (large), camera, serial, capture date.
 - States plainly when a file has no shutter count (edited export, unsupported body).
+- Accepts only photo files (the extensions the scan reads); anything else gets a plain message instead of a made-up count.
 
 ## Visual direction
 

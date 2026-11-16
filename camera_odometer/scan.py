@@ -44,7 +44,7 @@ def scan(roots: str | list[str], year: int, et, *,
 
     # 1-2. Walk, and group each folder's images by (prefix, extension).
     paths: dict[str, str] = {}
-    groups: list[tuple[str, str, list[str]]] = []  # (folder rel, prefix, files in natural order)
+    groups: list[tuple[str, list[str]]] = []  # (folder rel, one (prefix, extension) group in natural order)
     for start in zip(root_rels, roots):
         for rel, path, names in _walk(*start, warnings):
             reader.check_cancelled()
@@ -53,42 +53,48 @@ def scan(roots: str | list[str], year: int, et, *,
             for name in names:
                 stem, ext = os.path.splitext(name)
                 by_key[re.match(r"\D*", stem).group(), ext.lower()].append(os.path.join(path, name))
-            groups += [(rel, prefix, files) for (prefix, _), files in by_key.items()]
+            groups += [(rel, files) for files in by_key.values()]
 
     # 3. Probe both ends of every group, batched.
-    ends = list(dict.fromkeys(p for _, _, files in groups for p in (files[0], files[-1])))
+    ends = list(dict.fromkeys(p for _, files in groups for p in (files[0], files[-1])))
     probe = dict(zip(ends, reader.read(ends)))
 
     # 4. Resolve each group into runs of (first, last, frames) per body. Groups with counts go
     # first, so that count-less copies of a counted model are dropped without reading more.
-    runs: dict[tuple[str, str], list[tuple[str, Shot, Shot, int]]] = defaultdict(list)
+    runs: dict[tuple[str, str], list[tuple[Shot, Shot, list[str]]]] = defaultdict(list)
 
     def no_counts(group) -> bool:
-        return probe[group[2][0]].shutter_count is None and probe[group[2][-1]].shutter_count is None
+        return probe[group[1][0]].shutter_count is None and probe[group[1][-1]].shutter_count is None
 
     for group in sorted(groups, key=no_counts):
-        rel, prefix, files = group
+        rel, files = group
         a, b = probe[files[0]], probe[files[-1]]
         if no_counts(group) and {a.model, b.model} <= reader.counted_models | {""}:
-            continue  # derivatives, or not camera files at all
-        for first, last, frames in _resolve(files, a, b, year, reader):
-            runs[rel, first.camera_id].append((prefix, first, last, frames))
+            # Derivatives, or not camera files at all, unless originals sit between two of them.
+            # ponytail: one probe in the middle; counted files hidden behind count-less ends AND
+            # a count-less middle are still missed. Probe more of the group if that ever bites.
+            if len(files) < 3 or reader.read([files[len(files) // 2]])[0].shutter_count is None:
+                continue
+            found = _split(reader.read(files), year)
+        else:
+            found = _resolve(files, a, b, year, reader)
+        for run in found:
+            runs[rel, run[0].camera_id].append(run)
 
     # 5. One CameraRange per (folder, body), one Camera per body.
     folders: dict[str, Folder] = {}
     by_body: dict[str, list[CameraRange]] = defaultdict(list)
     for (rel, camera_id), found in sorted(runs.items()):
-        counted = [r for r in found if r[1].shutter_count is not None]
-        if not counted and found[0][1].model in reader.counted_models:
+        counted = [r for r in found if r[0].shutter_count is not None]
+        if not counted and found[0][0].model in reader.counted_models:
             continue  # derivative
         key = _count if counted else _taken
-        per_prefix: dict[str, int] = defaultdict(int)  # raw + JPEG pairs share a prefix: count once
-        for prefix, _, _, frames in counted or found:
-            per_prefix[prefix] = max(per_prefix[prefix], frames)
+        # A raw + JPEG pair shares its file name and is one frame.
+        stems = {os.path.splitext(os.path.basename(p))[0].lower() for r in counted or found for p in r[2]}
         rng = CameraRange(camera_id,
-                          min((r[1] for r in counted or found), key=key),
-                          max((r[2] for r in counted or found), key=key),
-                          sum(per_prefix.values()), estimated=not counted)
+                          min((r[0] for r in counted or found), key=key),
+                          max((r[1] for r in counted or found), key=key),
+                          len(stems), estimated=not counted)
         folders.setdefault(rel, Folder(rel, paths[rel])).ranges.append(rng)
         by_body[camera_id].append(rng)
         if counted and rng.actuations < 0.9 * rng.frames:
@@ -199,6 +205,7 @@ class _Reader:
     def read(self, paths: list[str]) -> list[Shot]:
         keys = {p: _cache_key(p) for p in paths}
         shots = {p: _load(p, self.cache[k]) for p, k in keys.items() if k in self.cache}
+        shots = {p: s for p, s in shots.items() if s}
         todo = [p for p in paths if p not in shots]
         self.total += len(paths)
         self.done += len(paths) - len(todo)
@@ -227,8 +234,15 @@ def _dump(s: Shot) -> list:
     return [s.make, s.model, s.serial, s.taken.isoformat() if s.taken else None, s.shutter_count]
 
 
-def _load(path: str, v: list) -> Shot:
-    return Shot(path, v[0], v[1], v[2], datetime.fromisoformat(v[3]) if v[3] else None, v[4])
+def _load(path: str, v: list) -> Shot | None:
+    """The cached Shot, or None for an entry that is damaged or from another version (a cache miss)."""
+    try:
+        make, model, serial, taken, count = v
+        if not all(isinstance(x, str) for x in (make, model, serial)) or not isinstance(count, int | None):
+            return None
+        return Shot(path, make, model, serial, datetime.fromisoformat(taken) if taken else None, count)
+    except (TypeError, ValueError):
+        return None
 
 
 def _ordered(a: Shot, b: Shot) -> bool:
@@ -272,11 +286,14 @@ def _unwrap(files: list[str], a: Shot, b: Shot, reader: _Reader) -> tuple[list[s
     return files[hi:] + files[:hi], b, a
 
 
-def _resolve(files: list[str], a: Shot, b: Shot, year: int, reader: _Reader) -> list[tuple[Shot, Shot, int]]:
-    """The in-year runs (first, last, frames) of one group, given its probed ends a and b."""
+def _resolve(files: list[str], a: Shot, b: Shot, year: int, reader: _Reader) -> list[tuple[Shot, Shot, list[str]]]:
+    """The in-year runs (first, last, files) of one group, given its probed ends a and b."""
     try:
-        if _ordered(b, a) and not _ordered(a, b):
-            files, a, b = _unwrap(files, a, b, reader)
+        if _ordered(b, a):
+            if _ordered(a, b) and len(files) > 2:
+                raise _Mixed  # identical ends say nothing about the order of what lies between
+            if not _ordered(a, b):
+                files, a, b = _unwrap(files, a, b, reader)
         if not _ordered(a, b):
             raise _Mixed
         if b.taken.year < year or a.taken.year > year:
@@ -288,12 +305,12 @@ def _resolve(files: list[str], a: Shot, b: Shot, year: int, reader: _Reader) -> 
                 return []
         if b.taken.year > year:
             j, b, _, _ = _bisect(files, i, j, a, b, lambda s: s.taken.year > year, reader)
-        return [(a, b, j - i + 1)]
+        return [(a, b, files[i:j + 1])]
     except _Mixed:
         return _split(reader.read(files), year)
 
 
-def _split(shots: list[Shot], year: int) -> list[tuple[Shot, Shot, int]]:
+def _split(shots: list[Shot], year: int) -> list[tuple[Shot, Shot, list[str]]]:
     """Full-read fallback: one run per body among the in-year shots."""
     bodies: dict[str, list[Shot]] = defaultdict(list)
     for s in shots:
@@ -304,7 +321,7 @@ def _split(shots: list[Shot], year: int) -> list[tuple[Shot, Shot, int]]:
         counted = [s for s in body if s.shutter_count is not None]
         key = _count if counted else _taken
         body = counted or body  # count-less files of a counted body are derivatives
-        runs.append((min(body, key=key), max(body, key=key), len(body)))
+        runs.append((min(body, key=key), max(body, key=key), [s.path for s in body]))
     return runs
 
 

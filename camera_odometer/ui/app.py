@@ -39,7 +39,10 @@ def real_scan(roots, year, engine, store, progress, cancelled):
         result = scan(roots, year, engine.et(), cache=cache, progress=progress, cancelled=cancelled)
     except ScanCancelled:
         return None
-    store.save_cache(cache)
+    try:
+        store.save_cache(cache)
+    except OSError:
+        pass  # the cache only speeds up the next scan; this one is done
     return result
 
 

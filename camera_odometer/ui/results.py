@@ -110,6 +110,7 @@ class ResultsPage(QWidget):
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(34)
         self.table.setShowGrid(False)
+        self.table.setTextElideMode(Qt.ElideMiddle)  # the end of a long folder path is the telling part
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)

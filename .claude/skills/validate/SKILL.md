@@ -33,7 +33,7 @@ Runs in WSL. Needs neither Qt nor ExifTool.
 .venv-win/Scripts/python.exe main.py --selftest
 ```
 
-Pass: prints `selftest: N checks passed` and exits 0. Any exception in a slot or event handler fails the run.
+Pass: prints `selftest: N checks passed` and exits 0. Any exception in a slot or event handler fails the run. It covers keyboard handling, the Home folder list, the scan bar, the window icon and the photo-only rule of Check Shutter Count.
 
 ## 3. UI screenshots
 
@@ -53,8 +53,8 @@ The exe has to run from a Windows drive. Use the Windows folder the user has app
 '<same folder as a /mnt/... path>/CameraOdometer.exe' --selftest; echo "exit $?"
 ```
 
-- Pass: `selftest: N checks passed` and `exit 0`. The first run of a new exe takes 10 to 20 s.
-- The run leaves an empty `build/` folder next to the exe (its scratch data); delete it afterwards.
+- Pass: `selftest: N checks passed`, then `selftest: the bundled ExifTool read a test image 8 pixels wide`, and `exit 0`. The first run of a new exe takes 10 to 20 s.
+- The run creates a hidden `.data/` next to the exe holding `exiftool-<version>/`. Check it is there, then delete it so the user starts clean.
 - `Invalid argument` or `WinError 4551` means Smart App Control blocked the file: see Troubleshooting in `docs/development.md`. It is not a bug in the build.
-- **Limit**: the selftest uses demo data and never starts ExifTool, so it does not prove the bundled ExifTool works. After a change to the ExifTool bundling, ask the user to open the exe and check the shutter count of one real raw file.
+- **Limit**: the bundled ExifTool is proven to unpack, start and read a generated JPEG, not a raw file. Raw reading is the same ExifTool as from source: check it there with the scan CLI on a folder of real raw files.
 - Startup time only matters when the bundle contents change. The numbers to compare with are in `docs/development.md`.

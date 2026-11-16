@@ -156,6 +156,8 @@ def _painted(path: str, w: int, h: int) -> tuple[bytes, int]:
 class DemoExifTool:
     """Same surface as exif.ExifTool, backed by painted images instead of files."""
 
+    alive = True
+
     def read(self, paths):
         out = []
         for p in paths:

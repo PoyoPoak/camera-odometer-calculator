@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from PySide6.QtCore import QObject, QSize, Qt, Signal, Slot
 from PySide6.QtGui import QImage, QImageReader, QTransform
 
+from ..exif import ExifToolError
+
 THUMB_PX = 320  # longest side kept in the thumbnail cache
 PREVIEW_PX = 2400
 
@@ -15,9 +17,10 @@ PREVIEW_PX = 2400
 def friendly(exc: BaseException) -> str:
     """Plain-language message for anything a worker can raise."""
     text = str(exc)
-    if "exiftool" in text.lower() or "exiftool" in type(exc).__name__.lower():
-        return ("ExifTool, the helper that reads photo metadata, could not be started. Close the app, "
-                "delete the hidden .data folder next to it, and start it again.")
+    if isinstance(exc, ExifToolError):
+        return ("ExifTool, the helper that reads photo metadata, is not responding. Try again. If it keeps "
+                "happening, close the app and delete only the exiftool folder inside the hidden .data folder "
+                "next to the app; a fresh copy is unpacked on the next start. Your sessions stay.")
     if isinstance(exc, FileNotFoundError):
         which = f"The folder “{exc.filename}”" if exc.filename else "That folder"
         return f"{which} could not be found. Check that the drive is connected and try again."
@@ -96,7 +99,7 @@ class Engine(QObject):
         with self._et_lock:
             if self._closed:
                 raise RuntimeError("the app is closing")
-            if self._et is None:
+            if self._et is None or not self._et.alive:  # first use, or the process died: start afresh
                 if self._make_exiftool:
                     self._et = self._make_exiftool()
                 else:

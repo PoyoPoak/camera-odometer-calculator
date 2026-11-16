@@ -43,23 +43,25 @@ python3 scripts/fetch_exiftool.py
 Two flags run without opening a window (Qt's `offscreen` platform) and exit by themselves:
 
 ```bash
-.venv-win/Scripts/python.exe main.py --selftest                   # keyboard-handling checks; exit code 0 = pass
+.venv-win/Scripts/python.exe main.py --selftest                   # behaviour checks; exit code 0 = pass
 .venv-win/Scripts/python.exe main.py --screenshots build/screens  # one PNG per screen, from the demo library
 ```
 
-- Both use the demo library and a scratch data folder, `build/demo-data/`. They never start ExifTool and never touch `.data/`.
+- Both use the demo library and a scratch data folder in the system temp directory, removed at the end. From source they never start ExifTool and never touch `.data/`.
+- **In the built exe**, `--selftest` also starts the bundled ExifTool and reads a generated image, which unpacks ExifTool into `.data/` next to the exe.
+- The screenshots in `docs/images/` are copies of these PNGs (the `-min` size). Refresh them when a screen changes.
 - The `offscreen` platform starts with no fonts. Code that draws text there must load one first (`QFontDatabase.addApplicationFont`), or every glyph is an empty box.
 
 ## Engine tests and scan CLI
 
 ```bash
 python3 -m unittest discover -s tests
-python3 -m camera_odometer.scan "/mnt/d/Photos" 2025
+python3 -m camera_odometer.scan 2025 "/mnt/d/Photos" "/mnt/e/Archive"
 ```
 
 - The tests need neither Qt nor ExifTool.
 - Which checks to run for which kind of change: `.claude/skills/validate/SKILL.md`.
-- The scan CLI prints the cameras and folders it finds for that year. It reads and writes the probe cache in `.data/` at the repo root.
+- The scan CLI takes the year, then one or more photo folders. It prints the cameras, folders and warnings for that year, how many actuations fall inside and outside the folders, and how many files it had to read. It reads and writes the probe cache in `.data/` at the repo root.
 
 ## Build the exe
 
@@ -94,7 +96,8 @@ A onefile exe unpacks its whole payload to `%TEMP%` on every launch, and Windows
 | ExifTool as one zip | 2.7 |
 | One zip, unused Qt files dropped (**current**) | 2.1 |
 
-- **ExifTool is one zip** at the bundle root, `exiftool-<version>.zip`. The app unpacks it once (about 2 s) next to the exe and reuses it after that.
+- **ExifTool is one zip** at the bundle root, `exiftool-<version>.zip`. The app unpacks it once (about 2 s) into `.data/` next to the exe, the first time it reads a photo, and reuses it after that.
+- **`assets/icon.ico`** is bundled as a data file too: the window icon is loaded from it at run time.
 - **Dropped Qt files** (`DROP` in `scripts/build.py`): the software OpenGL fallback, Qt's own translations, and QtNetwork. Code that starts using `PySide6.QtNetwork` must take it off that list and out of the spec's `excludes`.
 
 ## The `.data` folder
