@@ -32,6 +32,7 @@ class ExifTool:                              # one long-lived `-stay_open` proce
     def read(self, paths: list[str]) -> list[Shot]                      # same order as input
     def thumbnails(self, paths: list[str]) -> dict[str, tuple[bytes, int]]  # JPEG bytes, rotation in degrees clockwise
     def preview(self, path: str) -> tuple[bytes, int] | None            # large embedded JPEG, rotation
+    def metadata(self, path: str) -> list[tuple[str, str, str]]          # every tag: (group, description, value)
     alive: bool                                                          # False once the process has exited
     def close(self, wait: float = 5) -> None                             # also a context manager
 ```
@@ -39,6 +40,7 @@ class ExifTool:                              # one long-lived `-stay_open` proce
 - **Frozen app**: the bundle carries `exiftool-<version>.zip`. `find_exiftool()` unpacks it once into `store.data_dir() / "exiftool-<version>"` (into a `.tmp` folder, then a rename) and removes other versions. This is the only engine-to-engine import besides `models`.
 - **`close(wait)`** lets the process exit. If a call is still running after `wait` seconds it kills the process instead, and that call raises `ExifToolError` in its thread. The UI relies on this so that closing the window never hangs.
 - **A dead process** makes every call raise `ExifToolError`. The owner checks `alive` and makes a new `ExifTool` (the UI's `Engine.et()` does).
+- **`metadata(path)`** reads `-G1 -a -l` and keeps file order. ExifTool's own group is left out, lists are joined with ", ", and binary fields stay ExifTool's "(Binary data N bytes, …)" note (never `-b`). It backs the View Metadata dialog.
 - A file ExifTool cannot read gives a blank `Shot`, and so does a path that cannot be sent as a UTF-8 line. `ImageCount` stands in for `ShutterCount`, so callers must only pass camera files (`IMAGE_EXTS`).
 
 ### `scan.py`

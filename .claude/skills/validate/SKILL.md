@@ -33,7 +33,7 @@ Runs in WSL. Needs neither Qt nor ExifTool.
 .venv-win/Scripts/python.exe main.py --selftest
 ```
 
-Pass: prints `selftest: N checks passed` and exits 0. Any exception in a slot or event handler fails the run. It covers keyboard handling, the Home folder list, the scan bar, the window icon, the close confirmation and the photo-only rule of Check Shutter Count.
+Pass: prints `selftest: N checks passed` and exits 0. Any exception in a slot or event handler fails the run. It covers keyboard handling (including a held Enter), the Home folder list and its scrolling, the scan bar, the Cameras check boxes and legend, Classify's label buttons and preview grid at several window sizes, the Included Folders menu, Start Over, clicking and hovering in the single-image view, double-clicking a Results row, the window icon, the close confirmation, the photo-only rule of Check Shutter Count and the metadata dialog.
 
 ## 3. UI screenshots
 
