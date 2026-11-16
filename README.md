@@ -2,7 +2,9 @@
 
 Windows desktop app that works out what share of your camera use in a tax year was for business, from the shutter counts in your photos.
 
-![Results screen](docs/images/results.png)
+
+https://github.com/user-attachments/assets/63703770-d5df-4ba7-a436-2fe300ed12ae
+
 
 ## Why
 
