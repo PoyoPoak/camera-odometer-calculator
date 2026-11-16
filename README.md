@@ -35,7 +35,9 @@ If your camera gear does paid work and personal shooting, your tax records may n
 2. Put it in a folder of its own that you can write to (not `Program Files`) and start it. It keeps a little state in a hidden `.data` folder next to itself.
 3. The first start takes 10 to 20 seconds while Windows scans the new file.
 
-- The exe is **not code-signed**, so Smart App Control or SmartScreen may block it. See [troubleshooting](docs/development.md#troubleshooting).
+- The exe is **not code-signed**, so Windows may warn about it or block it. Nothing is wrong with the file.
+  - **SmartScreen** ("Windows protected your PC"): click **More info**, then **Run anyway**.
+  - **Smart App Control** ("part of this app has been blocked") has no per-file override. Run the app [from source](docs/development.md#run-from-source) instead, or turn Smart App Control off in Windows Security. More in [troubleshooting](docs/development.md#troubleshooting).
 - How to use it: [user guide](docs/user-guide.md).
 
 ## Limits
