@@ -440,7 +440,90 @@ def _selftest_pages(win) -> int:
 
 def _selftest_viewer(win) -> int:
     """Gallery, single-image view and Results. Sets up the state it needs."""
-    return 0
+    from PySide6.QtGui import QMouseEvent
+
+    checks = 0
+
+    def check(cond, what):
+        nonlocal checks
+        if not cond:
+            raise AssertionError(what)
+        checks += 1
+
+    press, release, move = QEvent.MouseButtonPress, QEvent.MouseButtonRelease, QEvent.MouseMove
+    click = (press, release)
+
+    def mouse(widget, pos, *kinds):
+        for kind in kinds:
+            button = Qt.NoButton if kind == move else Qt.LeftButton
+            held = Qt.LeftButton if kind in (press, QEvent.MouseButtonDblClick) else Qt.NoButton
+            QApplication.sendEvent(widget, QMouseEvent(kind, pos, widget.mapToGlobal(pos), button, held,
+                                                       Qt.NoModifier))
+
+    classify, gallery, results = win.pages["classify"], win.pages["gallery"], win.pages["results"]
+    viewer = gallery.viewer
+
+    def at(fraction):  # a point on the viewer, that fraction of its width from the left
+        return QPointF(viewer.width() * fraction, viewer.height() / 2)
+
+    _open(win, Session(demo_scan(), dict(DEMO_LABELS)))
+    classify._select("Library/Portfolio Selects")
+    classify.open_gallery()
+    _settle(win)
+    check(gallery.grid_keys.isVisible() and not gallery.image_keys.isVisible(), "the grid shows its hotkeys")
+    gallery.open_image()
+    check(gallery.image_keys.isVisible() and not gallery.grid_keys.isVisible(),
+          "the single image swaps in its own hotkeys")
+
+    mouse(viewer, at(0.1), move, *click)
+    check(gallery.row == 0 and viewer.hover == -1 and not viewer.bar(),
+          "the first image has no bar on its left, and a click there does nothing")
+    mouse(viewer, at(0.9), move)
+    check(viewer.bar() == 1 and viewer.cursor().shape() == Qt.PointingHandCursor,
+          "the right third shows a bar and a pointing hand")
+    mouse(viewer, at(0.9), *click)
+    check(gallery.row == 1, "a click on the right third flips forward")
+    mouse(viewer, at(0.5), move, *click)
+    check(gallery.row == 1 and not viewer.bar() and viewer.cursor().shape() == Qt.ArrowCursor,
+          "the middle third shows no bar and a click there does nothing")
+    mouse(viewer, at(0.1), move, *click)
+    check(gallery.row == 0, "a click on the left third flips back")
+    # A synthetic press never moves the focus, so check the policy that keeps a real one from doing so.
+    check(viewer.focusPolicy() == Qt.NoFocus, "a click on the image does not take the keyboard focus")
+    _key(gallery.grid, Qt.Key_Right)
+    check(gallery.row == 1, "keys still flip after a click")
+    last = gallery.model.rowCount() - 1
+    gallery.flip(last - 1 - gallery.row)
+    mouse(viewer, at(0.9), move, *click)
+    check(gallery.row == last and not viewer.bar() and viewer.cursor().shape() == Qt.ArrowCursor,
+          "a click flips onto the last image, whose bar and hand go at once")
+    mouse(viewer, at(0.9), *click)
+    check(gallery.row == last, "no flip past the last image")
+    mouse(viewer, at(0.1), move)
+    QApplication.sendEvent(viewer, QEvent(QEvent.Leave))
+    check(viewer.hover == 0 and not viewer.bar(), "leaving the viewer clears the bar")
+    _settle(win)
+
+    win.go("results")
+    table = results.table
+    table.sortByColumn(3, Qt.DescendingOrder)
+    row = 1
+    rel = table.item(row, 0).toolTip()
+    check(rel != results.summary.rows[row].rel, "sorted: the table row is not the summary row")
+    mouse(table.viewport(), QPointF(table.visualRect(table.model().index(row, 1)).center()),
+          *click, QEvent.MouseButtonDblClick, release)
+    _settle(win)
+    check(win.page_name == "gallery" and gallery.rel == rel and classify.current == rel,
+          "a double-click on a Results row opens that folder's photos")
+    _key(gallery.grid, Qt.Key_Escape)
+    check(win.page_name == "classify" and classify.current == rel, "Esc then lands on that folder in Classify")
+
+    win.go("results")
+    start = next((b for b in results.findChildren(QPushButton) if b.text() == "Start Over"), None)
+    check(start is not None, "Results has a Start Over button")
+    start.click()
+    check(win.page_name == "home" and win.session is None, "Start Over on Results returns Home")
+    return checks
 
 
 def _screenshots(win, out: Path) -> int:
@@ -573,6 +656,21 @@ def _shots_pages(win, grab) -> None:
 
 def _shots_viewer(win, grab) -> None:
     """Extra screenshots of Gallery, the single-image view and Results: grab(name[, widget])."""
+    classify, gallery = win.pages["classify"], win.pages["gallery"]
+    _open(win, Session(demo_scan(), dict(DEMO_LABELS)))
+    classify._select("Library/03-14 Harbor Portraits")
+    classify.open_gallery()
+    _settle(win)
+    gallery.grid.setCurrentIndex(gallery.model.index(5))
+    gallery.open_image()
+    gallery.viewer.hover = 1  # offscreen has no mouse: set the hovered third directly
+    grab("12b-image-hover")
+    gallery.flip(-5)
+    gallery.viewer.hover = -1  # the first image: nothing to flip back to, so no bar
+    grab("12c-image-first-hover")
+    gallery.viewer.hover = 0
+    gallery.step_back()
+    gallery.step_back()
 
 
 def _real_exiftool(scratch: Path) -> int:
