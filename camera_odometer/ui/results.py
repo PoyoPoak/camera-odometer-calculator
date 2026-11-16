@@ -78,6 +78,9 @@ class ResultsPage(QWidget):
         actions.addWidget(button("Export CSV…", "primary", self.export_csv))
         side = QVBoxLayout()
         side.addLayout(actions)
+        side.addSpacing(8)
+        side.addWidget(label("Labels are not saved when the app closes.\nExport the CSV to keep a record.",
+                             "faint", align=Qt.AlignRight))
         side.addStretch(1)
         top.addLayout(side)
         col.addLayout(top)
@@ -110,7 +113,6 @@ class ResultsPage(QWidget):
         self.table.verticalHeader().hide()
         self.table.verticalHeader().setDefaultSectionSize(34)
         self.table.setShowGrid(False)
-        self.table.setTextElideMode(Qt.ElideMiddle)  # the end of a long folder path is the telling part
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -239,6 +241,7 @@ class ResultsPage(QWidget):
 
     def copy_summary(self):
         QGuiApplication.clipboard().setText(self.summary_text())
+        self.win.unsaved = False
         self.copy_button.setText("Copied")
         QTimer.singleShot(1500, lambda: self.copy_button.setText("Copy summary"))
 
@@ -254,6 +257,7 @@ class ResultsPage(QWidget):
         except OSError as exc:
             self.win.set_status(f"Could not save the CSV: {exc.strerror or exc}")
         else:
+            self.win.unsaved = False
             self.win.set_status(f"Saved {os.path.basename(path)}")
 
     def handle_key(self, event) -> bool:

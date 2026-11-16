@@ -39,10 +39,7 @@ def real_scan(roots, year, engine, store, progress, cancelled):
         result = scan(roots, year, engine.et(), cache=cache, progress=progress, cancelled=cancelled)
     except ScanCancelled:
         return None
-    try:
-        store.save_cache(cache)
-    except OSError:
-        pass  # the cache only speeds up the next scan; this one is done
+    store.save_cache(cache)
     return result
 
 
@@ -107,7 +104,8 @@ class MainWindow(QMainWindow):
 
         self.store, self.engine = store, engine
         self.scan_fn, self.list_images = scan_fn, list_images
-        self.session: Session | None = None
+        self.session: Session | None = None  # in memory only: nothing about it is written to disk
+        self.unsaved = False  # labels or exclusions changed since the last export
         self.reached = 0
         self._cancel = threading.Event()
 
@@ -193,29 +191,12 @@ class MainWindow(QMainWindow):
     def set_status(self, text: str) -> None:
         self.status.setText(text)
 
-    # -- session --
-
-    def resume(self, session: Session) -> None:
-        self.session = session
-        self.reached = 3 if classified(session)[0] else 2
-        self.go("classify")
-
-    def save(self) -> None:
-        """Called after every change; there is no Save button."""
-        try:
-            self.store.save_session(self.session)
-        except OSError as exc:
-            self.set_status(f"Could not save your progress: {exc.strerror or exc}")
-
     # -- scan --
 
     def start_scan(self, roots: list[str], year: int) -> None:
         settings = self.store.settings()
         settings.update(last_roots=roots, last_year=year)
-        try:
-            self.store.save_settings(settings)
-        except OSError:
-            pass  # remembering the folders is a convenience; the scan itself will report real trouble
+        self.store.save_settings(settings)
         cancel = self._cancel = threading.Event()
         last = [0.0]
 
@@ -238,11 +219,14 @@ class MainWindow(QMainWindow):
     def _scan_done(self, result, cancel) -> None:
         if cancel.is_set() or result is None:
             return
-        # A rescan keeps the labels and exclusions already made for these folders and year.
-        old = self.store.load_session(result.roots, result.year)
-        self.session = Session(result, dict(old.labels) if old else {}, list(old.excluded) if old else [])
+        # A rescan in the same window keeps the labels of folders that are still there.
+        old, self.session = self.session, Session(result)
+        if old and old.scan.root == result.root:
+            rels = [f.rel for f in result.folders]
+            self.session.labels = {rel: label for rel, label in old.labels.items()
+                                   if not rel or any(r == rel or r.startswith(rel + "/") for r in rels)}
+            self.session.excluded = [cid for cid in old.excluded if cid in {c.id for c in result.cameras}]
         self.reached = 1
-        self.save()
         self.go("cameras")
 
     def _scan_failed(self, message: str, cancel) -> None:
@@ -267,7 +251,22 @@ class MainWindow(QMainWindow):
                 return True
         return False
 
+    def needs_confirm(self) -> bool:
+        return bool(self.unsaved and self.session and self.session.labels)
+
+    def close_prompt(self) -> QMessageBox:
+        box = QMessageBox(QMessageBox.Warning, "Camera Odometer", "Labels are not saved. Close anyway?",
+                          QMessageBox.Close | QMessageBox.Cancel, self)
+        box.setInformativeText("To keep a record, choose Cancel and export the CSV on the Results page.")
+        box.setDefaultButton(QMessageBox.Cancel)
+        return box
+
     def closeEvent(self, event):
+        # Headless runs (offscreen) must never wait for an answer.
+        if (self.needs_confirm() and QApplication.platformName() != "offscreen"
+                and self.close_prompt().exec() != QMessageBox.Close):
+            event.ignore()
+            return
         self._cancel.set()
         self.engine.close()
         super().closeEvent(event)

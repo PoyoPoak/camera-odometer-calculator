@@ -6,8 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from camera_odometer import calc, scan
-from camera_odometer.models import (BUSINESS, PERSONAL, Camera, CameraRange, Folder,
-                                    ScanResult, Session, Shot)
+from camera_odometer.models import BUSINESS, PERSONAL, Camera, CameraRange, Folder, ScanResult, Shot
 from camera_odometer.store import Store
 
 
@@ -81,23 +80,24 @@ class CalcTest(unittest.TestCase):
 
 
 class StoreTest(unittest.TestCase):
-    def test_session_round_trip(self):
+    def test_settings_and_cache_survive_bad_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             store = Store(Path(tmp))
-            self.assertIsNone(store.load_session(["/x"], 2031))
-            session = Session(sample_scan(), {"biz": BUSINESS}, ["Beta 2|0002"])
-            store.save_session(session)
-            loaded = store.load_session(["/x"], 2031)
-            self.assertEqual(loaded, session)
-            self.assertIsNotNone(loaded.saved_at)
-            self.assertEqual(store.sessions(), [session])
-            self.assertIsNone(store.load_session(["/x"], 2030))
+            self.assertEqual((store.settings(), store.load_cache()), ({}, {}))
+            store.save_settings({"last_roots": ["/x"], "last_year": 2031})
+            store.save_cache({"key": ["Acme", "Alpha 1", "0001", None, 7]})
+            self.assertEqual(store.settings(), {"last_roots": ["/x"], "last_year": 2031})
+            self.assertEqual(store.load_cache(), {"key": ["Acme", "Alpha 1", "0001", None, 7]})
 
-            store.save_settings({"root": "/x"})
-            self.assertEqual(store.settings(), {"root": "/x"})
-            next(Path(tmp).glob("session-*.json")).write_text("{not json")
-            self.assertIsNone(store.load_session(["/x"], 2031))
-            self.assertEqual(store.sessions(), [])
+            (Path(tmp) / "settings.json").write_text("{not json")
+            (Path(tmp) / "cache.json").write_text("[1, 2]")
+            self.assertEqual((store.settings(), store.load_cache()), ({}, {}))
+            store.save_settings({"last_year": 2030})  # a corrupt file is simply replaced
+            self.assertEqual(store.settings(), {"last_year": 2030})
+
+            blocked = Store(Path(tmp) / "settings.json" / "sub")  # cannot be created: a file is in the way
+            blocked.save_cache({"a": 1})  # must not raise
+            self.assertEqual(blocked.load_cache(), {})
 
 
 class FakeExifTool:

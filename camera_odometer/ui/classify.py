@@ -474,7 +474,7 @@ class ClassifyPage(QWidget):
             return
         self.labels[rel] = value
         self._refresh()
-        self.win.save()  # after the refresh, so a failed save stays visible in the status
+        self.win.unsaved = True
         self._flash_rel = rel
         self._direction = -1 if value == PERSONAL else 1
         theme.restyle(self.card, flash=value)
@@ -505,7 +505,7 @@ class ClassifyPage(QWidget):
         changed = self.current is not None and self.labels.pop(self.current, None)
         self._refresh()
         if changed:
-            self.win.save()
+            self.win.unsaved = True
 
     def move(self, step: int) -> None:
         item = self.tree.currentItem()

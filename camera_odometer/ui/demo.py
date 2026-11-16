@@ -183,13 +183,13 @@ def make_window(data: Path | None = None):
     store = Store(data or Path(tempfile.mkdtemp(prefix="camera-odometer-demo-")))
     store.save_settings({"last_roots": [f"{ROOT}/{name}".replace("/", "\\") for name in ROOTS],
                          "last_year": YEAR})
-    done = Session(demo_scan("E:/Archive", YEAR - 1))
-    done.labels = {"": BUSINESS, "Library/01-18 Winter Lakeshore": PERSONAL,
-                   "Library/04-05 Spring Trail Hike": PERSONAL, "Library/07-19 Coastal Road Trip": PERSONAL,
-                   "Library/10-31 Costume Party": PERSONAL}
-    store.save_session(done)
-    store.save_session(Session(demo_scan(), dict(DEMO_LABELS)))
     return MainWindow(store, Engine(DemoExifTool), scan_fn=fake_scan, list_images=list_images)
+
+
+def _open(win, session: Session) -> None:
+    """Headless runs: straight to Classify, as if this session had just been scanned."""
+    win.session, win.reached = session, 3 if session.labels else 2
+    win.go("classify")
 
 
 # ---- headless runs: --screenshots and --selftest ---------------------------
@@ -231,12 +231,12 @@ def _selftest(win) -> int:
     buttons = {b.property("kind"): b for b in page.findChildren(QPushButton)}
     session = Session(demo_scan())
     labels = session.labels
-    win.resume(session)
+    _open(win, session)
     _settle(win)
     first, second, third, fourth = (f.rel for f in session.scan.folders[:4])
     parent, child = "Library/04-26 Riverside Marathon", "Library/04-26 Riverside Marathon/Course"
 
-    check(win.page_name == "classify" and page.current == first, "resume opens Classify on the first folder")
+    check(win.page_name == "classify" and page.current == first, "Classify opens on the first folder")
     _key(tree, Qt.Key_Down)
     check(page.current == second, "Down moves to the next folder")
     _key(tree.viewport(), Qt.Key_Up)
@@ -308,16 +308,13 @@ def _selftest(win) -> int:
     check(page.current == first and not page.banner.isHidden(), "nothing left: stay put and offer results")
     check(win.status.text().startswith(f"{len(session.scan.folders)} / "), "counter shows all classified")
 
-    saved = win.store.load_session(session.scan.roots, session.scan.year)
-    check(saved is not None and saved.labels == labels, "every change is saved")
-
-    def full_disk(_session):
-        raise OSError(28, "No space left on device")
-
-    real_save, win.store.save_session = win.store.save_session, full_disk
+    check(win.needs_confirm(), "closing with labels that were not exported asks first")
+    win.go("results")
+    win.pages["results"].copy_summary()
+    check(not win.needs_confirm(), "after an export or a copied summary, closing does not ask")
+    win.go("classify")
     _key(tree, Qt.Key_Left)
-    check("Could not save" in win.status.text(), "a failed save is reported, not silent")
-    win.store.save_session = real_save
+    check(win.needs_confirm(), "a label changed after the export asks again")
     _settle(win)
 
     labels.clear()
@@ -395,7 +392,8 @@ def _selftest(win) -> int:
     _key(home.path, Qt.Key_Enter)
     _settle(win)
     check(win.page_name == "cameras", "a finished scan opens Cameras")
-    check(win.session.labels == labels and win.session is not session, "a rescan keeps the saved labels")
+    check(win.session.labels == labels and win.session is not session,
+          "a rescan in the same window keeps the labels")
     return checks
 
 
@@ -442,7 +440,7 @@ def _screenshots(win, out: Path) -> int:
     win.reached = 1
     win.go("cameras")
     grab("04-cameras-empty")
-    win.resume(win.store.load_session(demo_scan().roots, YEAR))
+    _open(win, Session(demo_scan(), dict(DEMO_LABELS)))
     win.go("cameras")
     grab("05-cameras")
     boxes = win.pages["cameras"].findChildren(theme.Check)
@@ -503,6 +501,10 @@ def _screenshots(win, out: Path) -> int:
     dialog.load("D:/Photos/Exports/harbor-portraits-export-012.jpg")
     grab("17-check-no-count", dialog)
     dialog.close()
+    prompt = win.close_prompt()  # shown, never exec()ed: a headless run must not wait for an answer
+    prompt.show()
+    grab("18-close-prompt", prompt)
+    prompt.close()
     win.go("home")
     return count
 

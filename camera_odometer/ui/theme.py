@@ -112,9 +112,6 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
 QTreeView, QListView, QTableView {{ background: transparent; border: none; outline: 0; }}
-QListWidget#recent::item {{ border-radius: 6px; }}
-QListWidget#recent::item:hover {{ background: {SURFACE}; }}
-QListWidget#recent::item:selected {{ background: {RAISED}; }}
 QTableView {{ gridline-color: transparent; selection-background-color: {RAISED};
     selection-color: {TEXT}; }}
 QTableView::item {{ padding: 0 10px; border-bottom: 1px solid #1d1d20; }}

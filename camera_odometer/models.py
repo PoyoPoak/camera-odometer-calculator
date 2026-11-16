@@ -89,12 +89,11 @@ class ScanResult:
 
 @dataclass
 class Session:
-    """Everything persisted for one (root, year) pair."""
+    """One scan and the choices made on it. Lives in memory only, for as long as the window is open."""
 
     scan: ScanResult
     labels: dict[str, str] = field(default_factory=dict)  # Folder.rel -> BUSINESS | PERSONAL
     excluded: list[str] = field(default_factory=list)  # Camera.id values left out of the math
-    saved_at: datetime | None = None
 
 
 @dataclass

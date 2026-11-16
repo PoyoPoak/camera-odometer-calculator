@@ -4,15 +4,13 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from PySide6.QtCore import QMargins, Qt
-from PySide6.QtWidgets import (QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLineEdit, QListWidget,
-                               QListWidgetItem, QProgressBar, QScrollArea, QSpinBox, QVBoxLayout,
-                               QWidget)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QDialog, QFileDialog, QGridLayout, QHBoxLayout, QLineEdit, QProgressBar,
+                               QScrollArea, QSpinBox, QVBoxLayout, QWidget)
 
-from .. import calc
 from ..scan import IMAGE_EXTS
 from . import theme
-from .app import classified, is_enter
+from .app import is_enter
 from .theme import button, label, num
 
 IMAGE_FILTER = f"Photos ({' '.join('*' + ext for ext in sorted(IMAGE_EXTS))})"
@@ -88,21 +86,9 @@ class HomePage(QWidget):
         col.addWidget(self.error)
         col.addSpacing(20)
 
-        self.recent_title = label("RECENT SESSIONS", "caps")
-        col.addWidget(self.recent_title)
-        col.addSpacing(8)
-        self.recent = QListWidget()
-        self.recent.setObjectName("recent")
-        self.recent.setVerticalScrollMode(QListWidget.ScrollPerPixel)
-        self.recent.setCursor(Qt.PointingHandCursor)
-        self.recent.itemClicked.connect(self.resume)
-        col.addWidget(self.recent)
-        col.addSpacing(20)
-
         row = QHBoxLayout()
         row.addWidget(button("Check shutter count…", on_click=self.check))
         row.addStretch(1)
-        row.addWidget(label("Progress is saved automatically.", "faint"))
         col.addLayout(row)
         col.addStretch(3)
 
@@ -114,47 +100,11 @@ class HomePage(QWidget):
             self.year.setValue(settings["last_year"])
 
     def enter(self):
-        self.recent.clear()
-        self._sessions = self.win.store.sessions()
-        for s in self._sessions:
-            done, total = classified(s)
-            if total and done == total:
-                state = f"{calc.summarize(s.scan, s.labels, s.excluded).business_pct:.0f}% business"
-            else:
-                state = f"{num(done)} of {num(total)} classified"
-            w = QWidget()
-            row = QHBoxLayout(w)
-            row.setContentsMargins(12, 0, 12, 0)
-            row.setSpacing(16)
-            name = label(theme.library_name(s.scan))
-            name.setMinimumWidth(120)
-            path = label(os.path.normpath(s.scan.root) if s.scan.root else "", "faint")
-            path.setMinimumWidth(40)
-            row.addWidget(name)
-            row.addWidget(path, 1)
-            row.addWidget(label(str(s.scan.year), "dim"))
-            saved = label("Saved " + theme.short_date(s.saved_at), "faint", align=Qt.AlignRight | Qt.AlignVCenter)
-            saved.setFixedWidth(96)
-            row.addWidget(saved)
-            st = label(state, "dim" if "classified" in state else "", align=Qt.AlignRight | Qt.AlignVCenter)
-            st.setFixedWidth(128)
-            row.addWidget(st)
-            item = QListWidgetItem()
-            item.setSizeHint(w.sizeHint().expandedTo(w.minimumSizeHint()).grownBy(QMargins(0, 8, 0, 8)))
-            self.recent.addItem(item)
-            self.recent.setItemWidget(item, w)
-        empty = not self._sessions
-        rows = min(len(self._sessions), 5)
-        self.recent.setFixedHeight(rows * self.recent.sizeHintForRow(0) + 4 if rows else 0)
-        self.recent_title.setText("RECENT SESSIONS" if not empty else "")
-        self.recent.setVisible(not empty)
         self.path.setFocus()
 
     def handle_key(self, event) -> bool:
         if is_enter(event):
-            if self.recent.hasFocus() and self.recent.currentItem():
-                self.resume(self.recent.currentItem())
-            elif self.path.text().strip():
+            if self.path.text().strip():
                 self.add(self.path.text())  # Enter adds a typed folder; Enter again scans
             else:
                 self.scan()
@@ -211,9 +161,6 @@ class HomePage(QWidget):
             self.path.setFocus()
             return
         self.win.start_scan(list(self.roots), self.year.value())
-
-    def resume(self, item):
-        self.win.resume(self._sessions[self.recent.row(item)])
 
     def check(self):
         CheckDialog(self.win).exec()
@@ -405,7 +352,7 @@ class CamerasPage(QWidget):
         elif not on and cam_id not in excluded:
             excluded.append(cam_id)
         shade(on)
-        self.win.save()
+        self.win.unsaved = True
         self._refresh_total()
 
     def _refresh_total(self):
