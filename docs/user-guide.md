@@ -15,8 +15,7 @@ Camera Odometer works out what share of your camera use in a tax year was for bu
 - **Add folder…** picks a folder that holds your photo folders. Add more if your library is split, for example a working folder and an archive drive. You can also paste a path and press `Enter`.
 - **Remove** takes a folder off the list. Nothing is deleted from disk.
 - Set the **tax year** and press **Scan** (`Enter`).
-- The scan reads a few files per folder, not every photo, so it takes seconds to a few minutes. A second scan of the same folders is much faster.
-- **Recent sessions** reopens earlier work without scanning again.
+- The scan reads a few files per folder, not every photo. Expect about a minute for a library of 25,000 files the first time and a few seconds after that.
 
 ## 2. Check the cameras
 
@@ -33,7 +32,7 @@ Camera Odometer works out what share of your camera use in a tax year was for bu
 - Walk down the list with `↓`. Press `←` for **Personal** or `→` for **Business**. The selection jumps to the next folder that still needs an answer.
 - A label on a folder also covers every folder inside it that has no label of its own (shown as *inherit*). Labelling a top row labels a whole photo folder at once.
 - Not sure what a folder holds? Press `Enter` to look through its photos, then `P` or `B` right there.
-- You can stop at any time. **Every change is saved as you make it.**
+- **Labels are not saved when you close the app.** Finish in one sitting and export the result (next step). The app asks before closing if you have not.
 
 ![Gallery](images/gallery.png)
 
@@ -44,7 +43,8 @@ Camera Odometer works out what share of your camera use in a tax year was for bu
 - **Business use** is the percentage to take to your tax records.
 - The bar and the table show where every shutter actuation of the year went.
 - **Warnings** lists what deserves a second look.
-- **Export CSV** saves the full breakdown; **Copy summary** puts a short text version on the clipboard.
+- **Export CSV** saves the full breakdown, folder by folder with its label. **This file is your record**: keep it with your tax papers.
+- **Copy summary** puts a short text version on the clipboard.
 
 ## Check one photo's shutter count
 
@@ -56,6 +56,7 @@ On the first screen, **Check shutter count…** shows how many shots a camera ha
 | --- | --- | --- |
 | Everywhere | `Esc` | Back one level |
 | Home | `Enter` | Add the typed folder; with an empty field, scan |
+| | `Tab`, then `Enter` | Reach and press a folder's **Remove** button |
 | Cameras | `Enter` | Continue |
 | Classify | `↑` / `↓` | Previous / next folder |
 | | `←` | Personal, then jump to the next unclassified folder |
@@ -82,10 +83,10 @@ The exact rules are in [calculation.md](calculation.md).
 
 ## Where your data is kept
 
-- In a hidden folder named **`.data`** next to `CameraOdometer.exe`: your sessions, the folder list, a scan cache, and the app's copy of ExifTool.
+- The app keeps very little: the photo folders and year you used last, a scan cache that makes the next scan fast, and its own copy of ExifTool. They sit in a hidden folder named **`.data`** next to `CameraOdometer.exe`.
+- **Your labels and results are not kept.** The exported CSV is the only record.
 - Nothing is sent anywhere and nothing is written into your photo folders.
 - **To reset the app**, close it and delete `.data` (turn on *Hidden items* in File Explorer to see it). It is recreated on the next start.
-- To move the app, move the exe and `.data` together.
 
 ## Accuracy notes
 

@@ -7,7 +7,6 @@ Target user: a photographer at tax time. Not a developer. Every screen answers o
 ```mermaid
 flowchart LR
     Home -->|Scan| Scan
-    Home -->|Resume saved session| Classify
     Home -->|Check shutter count| Check[Check Shutter Count]
     Scan --> Cameras
     Cameras --> Classify
@@ -16,8 +15,10 @@ flowchart LR
     Results -->|Back| Classify
 ```
 
-- A persistent **step bar** at the top shows `1 Folder · 2 Cameras · 3 Classify · 4 Results`. Every step up to the furthest one reached in this session is clickable, so going back to Cameras does not lock Results.
-- `Esc` always goes back one level. Progress is saved automatically after every change; there is no Save button.
+- A persistent **step bar** at the top shows `1 Folder · 2 Cameras · 3 Classify · 4 Results`. Every step up to the furthest one reached since the scan is clickable, so going back to Cameras does not lock Results.
+- `Esc` always goes back one level.
+- **Nothing is saved between launches** except the photo folders and year used last. Labels live as long as the window; the CSV export is the record. This keeps the app free of stale or half-written state.
+- **Closing** with labels that have not been exported (or copied) asks once: "Labels are not saved. Close anyway?"
 
 ## Screens
 
@@ -25,8 +26,7 @@ flowchart LR
 
 - **Photo folders**: a short list, one row per folder with a **Remove** button, for libraries split over several folders or drives. **Add folder…** opens the folder picker; a path typed or pasted into the field is added with `Enter`. The list is remembered.
 - **Tax year**: number field with **−** / **+** buttons (the stock spin arrows cannot be themed without image files). Defaults to last calendar year.
-- **Scan** (primary button, `Enter` when the path field is empty).
-- **Recent sessions** list: folder names, year, saved date, "74% business" if finished. Click to resume without rescanning.
+- **Scan** (primary button, `Enter` when the path field is empty). A scan in the same window keeps the labels of folders that are still there.
 - **Check shutter count** (secondary button): opens the single-image tool.
 
 ### 2. Scan
@@ -37,7 +37,7 @@ flowchart LR
 
 ### 3. Cameras
 
-One card per camera body found in the year:
+One card per camera body found in the year, up to four in a row when the window is wide enough:
 
 | Field | Example |
 | --- | --- |
@@ -102,7 +102,7 @@ One card per camera body found in the year:
 - Stacked bar: Business · Personal · Unclassified · Unattributed.
 - Table per folder: label, raw range, credited actuations. Sortable.
 - **Warnings** panel: overlapping albums, estimated bodies, albums whose counter moved less than their file count.
-- **Export CSV** (for tax records) and **Copy summary**.
+- **Export CSV** (primary button, for tax records) and **Copy summary**. A line under them says that labels are not saved when the app closes.
 
 ### Check Shutter Count
 

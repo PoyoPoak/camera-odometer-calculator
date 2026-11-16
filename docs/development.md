@@ -80,7 +80,7 @@ flowchart LR
     D -->|--deploy DIR| W[DIR/CameraOdometer.exe]
 ```
 
-- Takes about a minute. Output: `dist/CameraOdometer.exe`, about 38 MB.
+- Takes about a minute and a half. Output: `dist/CameraOdometer.exe`, about 39 MB.
 - **`--deploy DIR`** also copies the exe to a folder on a Windows drive. Run it from there: from the `\\wsl.localhost` path a start takes over 30 s.
 - **`--entry FILE`** freezes another script instead of `main.py` (used for startup experiments).
 - The PyInstaller spec is generated into `build/pyinstaller/` on every build. Change `scripts/build.py`, not the spec.
@@ -103,8 +103,8 @@ A onefile exe unpacks its whole payload to `%TEMP%` on every launch, and Windows
 ## The `.data` folder
 
 - From source: `<repo>/.data/` (git-ignored). Frozen: next to `CameraOdometer.exe`. Hidden on Windows.
-- Holds `settings.json`, `cache.json` and the session files, and in the frozen app `exiftool-<version>/`.
-- Safe to delete. Sessions and settings are lost; ExifTool is unpacked again on the next start.
+- Holds `settings.json` and `cache.json`, and in the frozen app `exiftool-<version>/`.
+- Safe to delete. The remembered folders are forgotten, the next scan is a cold one, and ExifTool is unpacked again on the next start.
 
 ## Troubleshooting
 

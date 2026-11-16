@@ -16,12 +16,15 @@ flowchart TD
 - **Engine** (`exif`, `scan`, `calc`, `store`) uses only the standard library and never imports Qt. It runs and is tested on Linux and Windows.
 - **UI** (`camera_odometer/ui/`) is PySide6. It calls the engine from worker threads and never parses metadata itself.
 - **`models.py`** is the contract between the two. Change it deliberately.
+- **Nothing about a scan is saved.** The scan result, the labels and the excluded bodies (`models.Session`) live in the window's memory; the CSV export is the record. Only the last-used settings and the probe cache are written to disk.
 
 ## Engine API
 
 ### `exif.py`
 
 ```python
+class ExifToolError(RuntimeError)            # not found, not unpacked, not started, or the process is gone
+
 def find_exiftool() -> list[str]            # argv prefix; frozen bundle, then vendor/, then PATH
 
 class ExifTool:                              # one long-lived `-stay_open` process, thread-safe
@@ -29,12 +32,14 @@ class ExifTool:                              # one long-lived `-stay_open` proce
     def read(self, paths: list[str]) -> list[Shot]                      # same order as input
     def thumbnails(self, paths: list[str]) -> dict[str, tuple[bytes, int]]  # JPEG bytes, rotation in degrees clockwise
     def preview(self, path: str) -> tuple[bytes, int] | None            # large embedded JPEG, rotation
+    alive: bool                                                          # False once the process has exited
     def close(self, wait: float = 5) -> None                             # also a context manager
 ```
 
 - **Frozen app**: the bundle carries `exiftool-<version>.zip`. `find_exiftool()` unpacks it once into `store.data_dir() / "exiftool-<version>"` (into a `.tmp` folder, then a rename) and removes other versions. This is the only engine-to-engine import besides `models`.
-- **`close(wait)`** lets the process exit. If a call is still running after `wait` seconds it kills the process instead, and that call raises `RuntimeError` in its thread. The UI relies on this so that closing the window never hangs.
-- A file ExifTool cannot read gives a blank `Shot`. `ImageCount` stands in for `ShutterCount`, so callers must only pass camera files (`IMAGE_EXTS`).
+- **`close(wait)`** lets the process exit. If a call is still running after `wait` seconds it kills the process instead, and that call raises `ExifToolError` in its thread. The UI relies on this so that closing the window never hangs.
+- **A dead process** makes every call raise `ExifToolError`. The owner checks `alive` and makes a new `ExifTool` (the UI's `Engine.et()` does).
+- A file ExifTool cannot read gives a blank `Shot`, and so does a path that cannot be sent as a UTF-8 line. `ImageCount` stands in for `ShutterCount`, so callers must only pass camera files (`IMAGE_EXTS`).
 
 ### `scan.py`
 
@@ -83,15 +88,12 @@ class Store:
     def __init__(self, directory: Path | None = None)
     def settings(self) -> dict
     def save_settings(self, settings: dict) -> None
-    def load_session(self, roots: list[str], year: int) -> Session | None
-    def save_session(self, session: Session) -> None    # stamps session.saved_at
-    def sessions(self) -> list[Session]          # newest first
     def load_cache(self) -> dict
     def save_cache(self, cache: dict) -> None
 ```
 
-- One session per **set of photo folders and year**: the key is the sorted, case-normalized folder list, so the order the folders were picked in does not matter.
-- Writes are atomic (temp file, then rename). A session file that cannot be read is treated as missing.
+- Both files are conveniences and **never fail**: a missing or corrupt file reads as `{}`, and a write that cannot be done is skipped.
+- Writes are atomic (temp file, then rename).
 
 ## Smart scan
 
@@ -110,9 +112,15 @@ The scan reads metadata from a few files per folder instead of every photo.
 
 Files with no shutter count are derivatives (exports, merged DNGs) when the same camera model has counts elsewhere, and are ignored. A model with no counts anywhere becomes an **estimated** body: its actuations are its file count.
 
-Probe results are cached in `.data` by path, size and modified time, so a rescan reads almost nothing.
+- **Count-less ends.** A group whose two ends have no count is taken for derivatives after one more probe in the middle; a count there triggers the full read instead.
+- **Identical ends.** If both ends are the same frame (same second, same count) in a group of more than two files, their order says nothing, so the group is read in full.
+- **Frames** of a folder and body are its distinct file names without extension, so a raw + JPEG pair is one frame.
+- **Cache.** Probe results are cached in `.data` by path, size and modified time, so a rescan reads almost nothing. Failed reads are never cached, and a damaged entry is a miss.
 
-Known ceiling: two bodies that share a filename prefix inside one folder are only detected when the group's two ends come from different bodies.
+### Known ceilings
+
+- Two bodies that share a filename prefix inside one folder are only detected when the group's two ends come from different bodies.
+- Originals hidden in a group whose two ends **and** middle file have no count are skipped as derivatives.
 
 ## Calculation
 
@@ -126,5 +134,4 @@ See [calculation.md](calculation.md).
 | --- | --- |
 | `settings.json` | Photo folders and tax year used last |
 | `cache.json` | Probe results by path, size and modified time |
-| `session-<hash>.json` | One per set of photo folders and year: scan result, labels, excluded bodies |
 | `exiftool-<version>/` | Frozen app only: ExifTool, unpacked from the bundle on first use |
