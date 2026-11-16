@@ -376,6 +376,10 @@ def _selftest(win) -> int:
     check("not a photo" in dialog.note.text() and not win.engine.pending, "a non-photo file is refused unread")
     dialog.deleteLater()
 
+    dead = win.engine.et()
+    dead.alive = False
+    check(win.engine.et() is not dead, "an ExifTool whose process died is replaced on the next use")
+
     bar = win.pages["scanning"].bar
     win.pages["scanning"].begin(home.roots, YEAR)
     win.pages["scanning"].on_progress(50, 100, "")

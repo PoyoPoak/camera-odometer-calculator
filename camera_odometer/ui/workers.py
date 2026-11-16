@@ -20,7 +20,7 @@ def friendly(exc: BaseException) -> str:
     if isinstance(exc, ExifToolError):
         return ("ExifTool, the helper that reads photo metadata, is not responding. Try again. If it keeps "
                 "happening, close the app and delete only the exiftool folder inside the hidden .data folder "
-                "next to the app; a fresh copy is unpacked on the next start. Your sessions stay.")
+                "next to the app. A fresh copy is unpacked on the next start.")
     if isinstance(exc, FileNotFoundError):
         which = f"The folder “{exc.filename}”" if exc.filename else "That folder"
         return f"{which} could not be found. Check that the drive is connected and try again."

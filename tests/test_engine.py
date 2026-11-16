@@ -146,6 +146,9 @@ class ScanTest(unittest.TestCase):
 
         self.assertEqual(scan.scan(self.root, 2031, self.et, cache=cache), result)
         self.assertEqual(self.et.files_read, 2)  # the rescan came from the cache
+        cache[next(iter(cache))] = ["damaged"]
+        self.assertEqual(scan.scan(self.root, 2031, self.et, cache=cache), result)
+        self.assertEqual(self.et.files_read, 3)  # a damaged cache entry is only a miss
 
     def test_group_straddling_the_year_is_bisected(self):
         start = datetime(2030, 12, 12)  # 20 files in 2030, 30 in 2031, 14 in 2032
@@ -171,6 +174,13 @@ class ScanTest(unittest.TestCase):
         (r,) = result.folders[0].ranges
         self.assertEqual((r.first.shutter_count, r.last.shutter_count, r.frames), (100, 139, 40))
         self.assertLess(self.et.files_read, 10)  # 2 ends + at most 6 probes for the seam
+
+    def test_identical_ends_hiding_a_wrap_force_a_full_read(self):
+        # Shooting order 9998, 9999, 0001, 0002; 9999 and 0001 are one silent-shutter burst.
+        for name, count, minute in (("9998", 100, 0), ("9999", 105, 1), ("0001", 105, 1), ("0002", 110, 2)):
+            self.add(f"IMG{name}.arw", count, datetime(2031, 6, 1, 12, minute))
+        (r,) = scan.scan(self.root, 2031, self.et).folders[0].ranges
+        self.assertEqual((r.first.shutter_count, r.last.shutter_count, r.frames), (100, 110, 4))
 
     def test_two_bodies_in_one_group_are_split_by_full_read(self):
         for n in range(1, 11):
@@ -208,16 +218,22 @@ class ScanTest(unittest.TestCase):
             self.add(f"exports/IMG{n:04d}.jpg", serial="")
         for n in range(1, 5):
             self.add(f"phone/PXL{n}.heic", taken=datetime(2031, 3, n), model="Phone", serial="")
+        for n in range(3, 7):  # 3 and 4 pair with a .heic, 5 and 6 are frames of their own
+            self.add(f"phone/PXL{n}.jpg", taken=datetime(2031, 3, n), model="Phone", serial="")
+        for n in range(1, 6):  # originals between two exports that share their prefix
+            self.add(f"mix/IMG{n:04d}.jpg", 298 + n if 1 < n < 5 else None, serial="0001" if 1 < n < 5 else "")
         result = scan.scan(self.root, 2031, self.et)
 
-        self.assertEqual([f.rel for f in result.folders], ["a", "phone"])
+        self.assertEqual([f.rel for f in result.folders], ["a", "mix", "phone"])
         (r,) = result.folders[0].ranges
         self.assertEqual((r.first.shutter_count, r.last.shutter_count, r.frames, r.estimated), (200, 204, 5, False))
-        (p,) = result.folders[1].ranges
+        (m,) = result.folders[1].ranges
+        self.assertEqual((m.first.shutter_count, m.last.shutter_count, m.frames), (300, 302, 3))
+        (p,) = result.folders[2].ranges
         self.assertEqual((p.estimated, p.frames, p.actuations, p.first.taken.day, p.last.taken.day),
-                         (True, 4, 4, 1, 4))
+                         (True, 6, 6, 1, 6))
         self.assertEqual([(c.model, c.estimated, c.actuations) for c in result.cameras],
-                         [("Alpha 1", False, 5), ("Phone", True, 4)])
+                         [("Alpha 1", False, 103), ("Phone", True, 6)])
 
 
 if __name__ == "__main__":
