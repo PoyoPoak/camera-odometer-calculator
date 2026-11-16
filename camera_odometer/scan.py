@@ -155,11 +155,9 @@ def _frames(paths) -> int:
 
 
 def _days(shots: list[Shot], camera_id: str, year: int) -> list[CameraRange]:
-    """A sparse folder's shots of one body as one CameraRange per run of shots taken on one day.
-
-    ponytail: keepers of two shoots that fall on the same day stay one run, still spanning the
-    counts between them. Split on a count jump as well if such folders turn up.
-    """
+    """A sparse folder's shots of one body as one CameraRange per run of shots taken on one day."""
+    # ponytail: keepers of two shoots that fall on the same day stay one run, still spanning the
+    # counts between them. Split on a count jump as well if such folders turn up.
     shots = sorted((s for s in shots if s.camera_id == camera_id and s.shutter_count is not None
                     and (s.taken is None or s.taken.year == year)), key=_count)
     runs: list[list[Shot]] = []

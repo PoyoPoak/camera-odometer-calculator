@@ -33,7 +33,8 @@ A folder of keepers gathered from many shoots holds a few files spread over a wi
 
 - **Rule:** a folder range is sparse when `span − frames ≥ 100` **and** `span ≥ 3 × frames` (span = `last − first + 1`).
 - **Split:** every in-year file of that body in the folder is read and sorted by count. A new run starts whenever the capture date changes. Each run is a range of its own, credited `last − first + 1`.
-- **Effect:** the counts between runs go to whichever album covers them, else to unattributed. A dense album is never sparse, so its uncaptured frames (deleted rejects) stay credited to it.
+- **Effect:** the counts between runs go to whichever album covers them, else to unattributed. A heavily culled album can be sparse too; each day's run still spans that day's deleted rejects, so only the counts between days are released.
+- **Narrowest wins per run:** each run competes on its own width, so a run can win counts from a slightly wider folder covering the same day (for example a sub-folder of the same shoot). The Overlap warning shows this.
 - **Ceiling:** keepers from two shoots taken on the same day stay one run.
 - Estimated bodies have no counts and are never split.
 
