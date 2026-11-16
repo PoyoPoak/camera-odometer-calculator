@@ -242,7 +242,8 @@ class CamerasPage(QWidget):
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
         self.grid.setSpacing(16)
-        scroll = QScrollArea()
+        self.cards: list[QWidget] = []
+        self.scroll = scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.grid_host)
         scroll.setFocusPolicy(Qt.NoFocus)
@@ -272,8 +273,9 @@ class CamerasPage(QWidget):
     def enter(self):
         s = self.win.session
         scan = s.scan
-        while self.grid.count():
-            self.grid.takeAt(0).widget().deleteLater()
+        for card in self.cards:
+            card.deleteLater()
+        self.cards = [self._card(cam) for cam in scan.cameras]
         self.win.set_status(f"{theme.library_name(scan)} · {scan.year}")
         if not scan.cameras:
             self.title.setText(f"No photos from {scan.year} were found")
@@ -289,14 +291,28 @@ class CamerasPage(QWidget):
             text.setAlignment(Qt.AlignLeft if scan.cameras else Qt.AlignHCenter)
         self.body.setStretch(0, 0 if scan.cameras else 2)
         self.body.setStretch(self.body.count() - 1, 1 if scan.cameras else 3)
-        cols = min(3, max(1, len(scan.cameras)))
-        for i, cam in enumerate(scan.cameras):
-            self.grid.addWidget(self._card(cam), i // cols, i % cols)
-        for c in range(3):
-            self.grid.setColumnStretch(c, 1 if c < cols or len(scan.cameras) < 3 else 0)
-        self.grid.setRowStretch(len(scan.cameras) // cols + 1, 1)
+        self._place_cards()
         self._refresh_total()
         self.next.setFocus()
+
+    def _place_cards(self) -> None:
+        """Up to four cards a row when they fit the window (four bodies is a common kit), else three."""
+        while self.grid.count():
+            self.grid.takeAt(0)
+        n = len(self.cards)
+        widest = max((card.minimumSizeHint().width() for card in self.cards), default=1)
+        gap = self.grid.spacing()
+        cols = 4 if n >= 4 and 4 * widest + 3 * gap <= self.scroll.viewport().width() else min(3, max(1, n))
+        for i, card in enumerate(self.cards):
+            self.grid.addWidget(card, i // cols, i % cols)
+        for c in range(4):
+            self.grid.setColumnStretch(c, 1 if c < max(cols, 3) else 0)  # a card is never wider than a third
+        for r in range(n + 2):
+            self.grid.setRowStretch(r, 1 if r == (n - 1) // cols + 1 else 0)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._place_cards()
 
     def _card(self, cam) -> QWidget:
         card = theme.frame("card")
