@@ -458,7 +458,164 @@ def _selftest(win) -> int:
 
 def _selftest_pages(win) -> int:
     """Home, Scan, Cameras and Check Shutter Count. Sets up the state it needs."""
-    return 0
+    import dataclasses
+
+    from PySide6.QtCore import QPoint, QPointF
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QLabel
+
+    from ..exif import ExifToolError
+    from .pages import CheckDialog, MetadataDialog
+    from .workers import friendly
+
+    checks = 0
+
+    def check(cond, what):
+        nonlocal checks
+        if not cond:
+            raise AssertionError(what)
+        checks += 1
+
+    def click(widget, x, y):
+        """A real mouse click, hit-tested like one (QAbstractButton.click() skips that)."""
+        for kind, buttons in ((QEvent.MouseButtonPress, Qt.LeftButton), (QEvent.MouseButtonRelease, Qt.NoButton)):
+            QApplication.sendEvent(widget, QMouseEvent(kind, QPointF(x, y), QPointF(widget.mapToGlobal(QPoint(x, y))),
+                                                       Qt.LeftButton, buttons, Qt.NoModifier))
+
+    def faint_hint(page, key):
+        return any(w.text() == key and w.property("role") == "faint" for w in page.findChildren(QLabel))
+
+    # -- Home --
+    win.resize(1100, 700)
+    win.go("home")
+    home = win.pages["home"]
+    keep = list(home.roots)
+    texts = [b.text() for b in home.findChildren(QPushButton)]
+    check("−" not in texts and "+" not in texts and "Check Shutter Count" in texts,
+          "Home has no − / + buttons and a Check Shutter Count button")
+    check(not faint_hint(home, "Enter"), "no Enter hint beside Scan")
+    year = home.year.value()
+    _key(home.year, Qt.Key_Down)
+    check(home.year.value() == year - 1, "an arrow key still steps the tax year")
+    _key(home.year, Qt.Key_Up)
+
+    home.roots = keep[:2]
+    home._show_roots()
+    _settle(win)
+    check(home.root_scroll.verticalScrollBar().maximum() == 0, "two photo folders fit without scrolling")
+    home.roots = [f"E:\\Shoots\\Client {n:02d}" for n in range(1, 15)]
+    home._show_roots()
+    home.show_error(friendly(ExifToolError()))  # the longest message Home shows
+    _settle(win)
+    rows = [home.root_rows.itemAt(i).widget() for i in range(home.root_rows.count())]
+    check(len(rows) == 14 and all(r.height() >= r.sizeHint().height() for r in rows)
+          and all(a.geometry().bottom() < b.geometry().top() for a, b in zip(rows, rows[1:])),
+          "many photo folders keep each row at full height, none overlapping")
+    title = next(w for w in home.findChildren(QLabel) if w.text() == "Camera Odometer")
+    last = next(b for b in home.findChildren(QPushButton) if b.text() == "Check Shutter Count")
+    check(home.root_scroll.verticalScrollBar().maximum() > 0 and title.mapTo(home, QPoint()).y() >= 24
+          and last.mapTo(home, QPoint(0, last.height())).y() <= home.height() - 24,
+          "at 1100x700 the folder list scrolls and the page keeps its top and bottom margins")
+    home.show_error("")
+    home.path.setText("E:\\Shoots\\Client 15")
+    _key(home.path, Qt.Key_Return)
+    _settle(win)
+    bar = home.root_scroll.verticalScrollBar()
+    check(len(home.roots) == 15 and bar.value() == bar.maximum(), "a folder added to a long list is scrolled into view")
+    bar.setValue(0)
+    home.remove(home.roots[0])
+    _settle(win)
+    check(bar.value() == 0, "removing a folder does not jump to the end of the list")
+
+    # -- Scan --
+    scan_page = win.pages["scanning"]
+    scan_page.begin(home.roots, YEAR)
+    check(scan_page.root.text().splitlines()[3:] == ["and 11 more"], "Scan lists three folders, then how many more")
+    scan_page.begin(keep, YEAR)
+    check(scan_page.root.text().splitlines() == [os.path.normpath(r) for r in keep], "Scan lists a few folders in full")
+    home.roots = keep
+    home._show_roots()
+
+    # -- Cameras --
+    one = demo_scan()
+    del one.cameras[1:]
+    win.session, win.reached = Session(one), 1
+    win.go("cameras")
+    cameras = win.pages["cameras"]
+    check(cameras.title.text() == f"We found 1 camera used in {YEAR}", "the Cameras title counts one camera")
+    session = Session(demo_scan())
+    win.session = session
+    win.go("cameras")
+    _settle(win)
+    check(cameras.title.text() == f"We found 3 cameras used in {YEAR}", "the Cameras title counts the cameras")
+    check(not faint_hint(cameras, "Enter"), "no Enter hint beside Continue")
+    card, cam = cameras.cards[0], session.scan.cameras[0]
+    box = card.findChild(theme.Check)
+    corner = box.mapTo(card, QPoint(box.width(), 0))
+    check(not box.text() and box.toolTip() == box.accessibleName() == "Include in calculation"
+          and corner.x() >= card.width() - 30 and corner.y() <= 30,
+          "each card's include box is text-less at its top right, named for screen readers")
+    total = cameras.total.text()
+    click(box, 17, 17)  # near the bottom right of the painted 18 px box
+    check(cam.id in session.excluded and cameras.total.text() != total, "a click on the box excludes the camera")
+    click(box, 9, 10)
+    check(cam.id not in session.excluded and cameras.total.text() == total, "a second click includes it again")
+    key = next(w for w in cameras.findChildren(QLabel) if w.property("role") == "key" and w.text() == "Enter")
+    legend = key.parentWidget()
+    footer = legend.parentWidget()
+    check(abs(legend.mapTo(footer, QPoint(legend.width() // 2, 0)).x() - footer.width() // 2) <= 2,
+          "the hotkey legend is centred in the Cameras footer")
+    four = demo_scan()
+    four.cameras.insert(2, dataclasses.replace(four.cameras[0], id="ILCE-1|05512399", model="ILCE-1",
+                                               serial="05512399"))
+    win.session = Session(four)
+    win.resize(1280, 800)
+    win.go("cameras")
+    _settle(win)
+    check(cameras.grid.getItemPosition(cameras.grid.indexOf(cameras.cards[3]))[:2] == (0, 3),
+          "four cameras, one of them estimated, share a row at 1280 wide")
+    win.session, win.reached = None, 0
+    win.go("home")
+
+    # -- Check Shutter Count and its metadata --
+    photo = "D:/Photos/Library/03-14 Harbor Portraits/DSC15730.ARW"
+    dialog = CheckDialog(win)
+    texts = [b.text() for b in dialog.findChildren(QPushButton)]
+    check("Browse" in texts and not dialog.meta_button.isEnabled(), "View Metadata waits for a file")
+    dialog.load(photo)
+    check(dialog.meta_button.isEnabled(), "a photo enables View Metadata")
+    dialog.load("D:/Photos/Library/folder.ico")
+    check(not dialog.meta_button.isEnabled(), "a file that is not a photo disables it again")
+    _settle(win)
+    dialog.deleteLater()
+
+    meta = MetadataDialog(win, photo)
+    meta.show()
+    _settle(win)
+    table = meta.table
+    tags = [table.item(r, 1).text() for r in range(table.rowCount())]
+    check(len(tags) == len(DemoExifTool().metadata(photo)) and "Shutter Count" in tags and table.isVisible(),
+          "the metadata dialog lists every tag of the file")
+    meta.filter.setText("SHUTTER")
+    shown = [r for r in range(table.rowCount()) if not table.isRowHidden(r)]
+    check(0 < len(shown) < len(tags)
+          and all("shutter" in " ".join(table.item(r, c).text() for c in range(3)).lower() for r in shown),
+          "the filter narrows the rows, ignoring case")
+    _key(meta.filter, Qt.Key_Return)
+    check(meta.isVisible(), "Enter in the filter does not close the dialog")
+    meta._loaded([])
+    check(table.isHidden() and meta.message.isVisible(), "a file without tags gets a plain message")
+    meta.close()
+    meta = MetadataDialog(win, "D:/Photos/Exports/harbor-portraits-export-012.jpg")
+    meta.show()
+    _settle(win)
+    exported = [meta.table.item(r, 1).text() for r in range(meta.table.rowCount())]
+    check(0 < len(exported) < len(tags) and "Shutter Count" not in exported,
+          "an export lists its fewer tags, with no shutter count")
+    meta.close()
+    win.resize(1280, 800)
+    _settle(win)
+    return checks
 
 
 def _selftest_viewer(win) -> int:
@@ -678,6 +835,47 @@ def _screenshots(win, out: Path) -> int:
 
 def _shots_pages(win, grab) -> None:
     """Extra screenshots of Home, Scan, Cameras and Check Shutter Count: grab(name[, widget])."""
+    import dataclasses
+
+    from ..exif import ExifToolError
+    from .pages import MetadataDialog
+    from .workers import friendly
+
+    home, session = win.pages["home"], win.session
+    keep = list(home.roots)
+    home.roots = [f"E:\\Archive\\{YEAR} Shoots\\Client {n:02d}" for n in range(1, 15)]
+    home._show_roots()
+    win.go("home")
+    grab("01b-home-many-folders")
+    home.show_error(friendly(ExifToolError()))  # the longest message Home shows
+    grab("01c-home-many-folders-error")
+    home.show_error("")
+    scan_page = win.pages["scanning"]
+    scan_page.begin(home.roots, YEAR)  # not made current: _settle waits for a scan page to finish
+    scan_page.on_progress(412, 618, "Studio/06-21 Garden Wedding")
+    grab("03b-scan-many-folders", scan_page)
+    home.roots = keep
+    home._show_roots()
+
+    four = demo_scan()
+    four.cameras.insert(2, dataclasses.replace(four.cameras[0], id="ILCE-1|05512399", model="ILCE-1",
+                                               serial="05512399"))
+    win.session = Session(four, excluded=["ILCE-1|05512399"])
+    win.go("cameras")
+    grab("05c-cameras-four")
+    win.session = session
+
+    meta = MetadataDialog(win, "D:/Photos/Library/03-14 Harbor Portraits/DSC15730.ARW")
+    meta.show()
+    grab("17b-check-metadata", meta)
+    meta.filter.setText("sony")
+    grab("17c-check-metadata-filtered", meta)
+    meta.close()
+    meta = MetadataDialog(win, "D:/Photos/Exports/harbor-portraits-export-012.jpg")
+    meta.show()
+    grab("17d-check-metadata-export", meta)
+    meta.close()
+    win.go("results")
 
 
 def _shots_viewer(win, grab) -> None:
