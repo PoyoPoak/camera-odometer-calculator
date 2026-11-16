@@ -80,8 +80,9 @@ QPushButton[kind="business"][on="own"] {{ color: #2b1d08; background: {BUSINESS_
 QPushButton[kind="business"][on="inherited"] {{ background: rgba(242, 168, 58, 0.16); }}
 
 /* "Included Folders" in the step bar: a QPushButton with a QMenu, its stock arrow replaced by text. */
-QPushButton[kind="menu"] {{ background: transparent; color: {DIM}; padding: 6px 12px; }}
-QPushButton[kind="menu"]:hover {{ color: {TEXT}; background: {RAISED}; }}
+QPushButton[kind="menu"], QPushButton[kind="menu"]:hover, QPushButton[kind="menu"]:pressed {{
+    background: transparent; border: none; color: {DIM}; padding: 6px 4px; }}
+QPushButton[kind="menu"]:hover, QPushButton[kind="menu"]:pressed {{ color: {TEXT}; }}
 QPushButton[kind="menu"]::menu-indicator {{ image: none; width: 0; }}
 QMenu {{ background: {RAISED}; border: 1px solid {BORDER}; border-radius: 8px; padding: 6px; }}
 QMenu::item {{ padding: 8px 16px; border-radius: 5px; }}
