@@ -22,6 +22,8 @@ FLASH_MS = 150
 SLIDE_PX = 22
 PANE_MARGINS = (12, 12, 12, 8)  # around the selected folder's pane; the flash slides it sideways
 THUMB_W = (120, 240)  # narrowest and widest a preview may get
+# ponytail: one ExifTool read per preview on each folder selection; raise it if real raws stay quick.
+MAX_PREVIEWS = 24
 GAP = 8
 
 
@@ -451,7 +453,7 @@ class ClassifyPage(QWidget):
     def _picks(self, rel: str) -> list[str]:
         """As many of the folder's photos as the strip has room for, evenly spaced through it."""
         photos = self._photos.get(rel, [])
-        n = self.strip.capacity(len(photos))
+        n = self.strip.capacity(min(len(photos), MAX_PREVIEWS))
         return [photos[i * (len(photos) - 1) // max(n - 1, 1)] for i in range(n)]
 
     def _strip_resized(self) -> None:

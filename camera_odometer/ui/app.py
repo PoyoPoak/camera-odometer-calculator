@@ -306,6 +306,11 @@ class MainWindow(QMainWindow):
             return True
         box = self.close_prompt(question, action)
         box.exec()
+        return self.discard_ok(box)
+
+    @staticmethod
+    def discard_ok(box: QMessageBox) -> bool:
+        """The answer to close_prompt(): its action button, not Cancel, Esc or the title-bar close."""
         return box.buttonRole(box.clickedButton()) == QMessageBox.AcceptRole
 
     def closeEvent(self, event):
@@ -317,9 +322,9 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
-def is_enter(event, ctrl: bool = False) -> bool:
+def is_enter(event) -> bool:
     mods = event.modifiers() & ~Qt.KeypadModifier
-    return event.key() in (Qt.Key_Return, Qt.Key_Enter) and mods == (Qt.ControlModifier if ctrl else Qt.NoModifier)
+    return event.key() in (Qt.Key_Return, Qt.Key_Enter) and mods == Qt.NoModifier
 
 
 def main(argv: list[str] | None = None) -> int:

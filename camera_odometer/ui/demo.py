@@ -449,6 +449,12 @@ def _selftest(win) -> int:
     check([a.text() for a in win.folders_menu.actions()]
           == [f"{os.path.normpath(f'{ROOT}/{n}')}\t{photos[n]:,} photos" for n in ROOTS]
           and not win.folders_button.isHidden(), "Included Folders lists each photo folder and its photos")
+    for answer, keep in (("Start Over", True), ("Cancel", False)):
+        box = win.close_prompt("Start over anyway?", "Start Over")
+        box.show()  # never exec(): a headless run must not wait
+        next(b for b in box.buttons() if b.text() == answer).click()
+        check(win.discard_ok(box) is keep, f"answering {answer} to the unsaved-labels prompt")
+        box.deleteLater()
     win.go("results")
     win.start_over()
     check(win.page_name == "home" and win.session is None and not win.can_go(1)

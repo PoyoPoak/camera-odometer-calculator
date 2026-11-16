@@ -257,7 +257,6 @@ class GalleryPage(QWidget):
         eff = effective_label(self.rel, self.win.session.labels)
         self.state.setText(LABEL_TEXT[eff])
         self.state.setStyleSheet(f"color: {LABEL_COLOR[eff]}; font-weight: 600;")
-        self.win.pages["classify"]._refresh()  # keeps the "N / M classified" status visible here too
 
     def _hints(self, _=0) -> None:
         """The hotkey legend of whichever view is showing."""
