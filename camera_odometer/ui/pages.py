@@ -1,6 +1,7 @@
 """Home, Scan and Cameras pages, and the Check Shutter Count and Metadata dialogs."""
 from __future__ import annotations
 
+import html
 import os
 import textwrap
 from datetime import datetime
@@ -610,7 +611,9 @@ class MetadataDialog(QDialog):
             for c, text in enumerate((group, tag, " ".join(value[:300].split()))):
                 self.table.setItem(r, c, QTableWidgetItem(text))
             self.table.item(r, 0).setForeground(QColor(theme.DIM))
-            self.table.item(r, 2).setToolTip(textwrap.fill(value[:2000], 100) + "…" * (len(value) > 2000))
+            # Escaped: Qt would render a value that looks like HTML (a tooltip guesses its format).
+            tip = html.escape(textwrap.fill(value[:2000], 100) + "…" * (len(value) > 2000))
+            self.table.item(r, 2).setToolTip(f"<p>{tip}</p>".replace("\n", "<br>") if tip else "")
         self.message.hide()
         for w in (self.count, self.filter, self.table):
             w.show()

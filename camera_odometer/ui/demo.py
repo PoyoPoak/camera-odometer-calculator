@@ -603,6 +603,8 @@ def _selftest_pages(win) -> int:
           "the filter narrows the rows, ignoring case")
     _key(meta.filter, Qt.Key_Return)
     check(meta.isVisible(), "Enter in the filter does not close the dialog")
+    meta._loaded([("XMP-dc", "Description", "<b>Sale</b> <img src='x.png'>")])
+    check("&lt;b&gt;Sale&lt;/b&gt;" in table.item(0, 2).toolTip(), "a value's markup shows as text, never as HTML")
     meta._loaded([])
     check(table.isHidden() and meta.message.isVisible(), "a file without tags gets a plain message")
     meta.close()
