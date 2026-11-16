@@ -49,7 +49,7 @@ Two flags run without opening a window (Qt's `offscreen` platform) and exit by t
 
 - Both use the demo library and a scratch data folder in the system temp directory, removed at the end. From source they never start ExifTool and never touch `.data/`.
 - **In the built exe**, `--selftest` also starts the bundled ExifTool and reads a generated image, which unpacks ExifTool into `.data/` next to the exe.
-- The screenshots in `docs/images/` are copies of these PNGs (the `-min` size). Refresh them when a screen changes.
+- The screenshots in `docs/images/` are copies of these PNGs at the minimum size: `01-home-min`, `05-cameras-min`, `06b-classify-two-cameras-min`, `11-gallery-min` and `14-results-min`. Refresh them when a screen changes; the README and the user guide show them.
 - The `offscreen` platform starts with no fonts. Code that draws text there must load one first (`QFontDatabase.addApplicationFont`), or every glyph is an empty box.
 
 ## Engine tests and scan CLI
@@ -98,7 +98,7 @@ A onefile exe unpacks its whole payload to `%TEMP%` on every launch, and Windows
 
 - **ExifTool is one zip** at the bundle root, `exiftool-<version>.zip`. The app unpacks it once (about 2 s) into `.data/` next to the exe, the first time it reads a photo, and reuses it after that.
 - **`assets/icon.ico`** is bundled as a data file too: the window icon is loaded from it at run time.
-- **Dropped Qt files** (`DROP` in `scripts/build.py`): the software OpenGL fallback, Qt's own translations, and QtNetwork. Code that starts using `PySide6.QtNetwork` must take it off that list and out of the spec's `excludes`.
+- **Dropped Qt files** (`DROP` in `scripts/build.py`): the software OpenGL fallback, Qt's own translations, QtNetwork and the touch-input plugin. Code that starts using `PySide6.QtNetwork` must take it off that list and out of the spec's `excludes`.
 
 ## The `.data` folder
 

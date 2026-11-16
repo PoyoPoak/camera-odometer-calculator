@@ -79,7 +79,7 @@ Title: "We found 3 cameras used in 2025". One card per camera body found in the 
 - **Top row**: the library itself. With one photo folder it is that folder; with several it is their common parent and each photo folder is a row below it. These rows can be classified like any other, which labels everything inside in one keystroke.
 - **Right**: the selected folder fills the space, with no card around it: date range, per-body shutter range and count, and evenly spaced previews.
   - **Personal** / **Business** buttons sit on the date row. The folder's own label lights its button; an inherited one tints it and shows "Inherited".
-  - **Previews** fill the space left: the grid with cells from 120 to 240 px wide that covers the most of it, so a short or wide window gets more rows rather than one row and empty space. At most 24 previews, since each is one ExifTool read when the folder is selected. A row that only groups other folders shows no previews.
+  - **Previews** fill the space left: the grid with cells from 120 to 240 px wide that covers the most of it, so a short or wide window gets more rows rather than one row and empty space. At most 24 previews, since each is one ExifTool read when the folder is selected. A line under them says how many photos `Space` opens. A row that only groups other folders shows no previews.
 - **Bottom bar**: classified count on the left ("14 / 38", in the Cameras footer style), the key legend in the middle, **See Results** on the right.
 
 | Key | Action |

@@ -4,7 +4,8 @@ Camera Odometer works out what share of your camera use in a tax year was for bu
 
 ## Get started
 
-- Put `CameraOdometer.exe` in a folder of its own that you can write to (not `Program Files`). No installation.
+- Download `CameraOdometer.exe` from the project's [latest release](https://github.com/PoyoPoak/camera-odometer-calculator/releases/latest).
+- Put it in a folder of its own that you can write to (not `Program Files`). No installation.
 - **The first launch takes 10 to 20 seconds** because Windows scans the new program. Later launches take about 2 seconds.
 - The app only reads your photos. It never changes, moves or deletes them.
 
